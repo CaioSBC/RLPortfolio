@@ -1,0 +1,5 @@
+numpy
+pandas
+pytorch
+gymnasium
+torch_geometric
