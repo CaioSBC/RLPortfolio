@@ -102,7 +102,7 @@ class PolicyGradient:
             episodes: Number of episodes to simulate.
         """
         for i in tqdm(range(1, episodes + 1)):
-            obs = self.train_env.reset()  # observation
+            obs, info = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
             done = False
 
@@ -192,7 +192,7 @@ class PolicyGradient:
         """
         self._setup_test(env, policy, online_training_period, lr, optimizer)
 
-        obs = self.test_env.reset()  # observation
+        obs, info = self.test_env.reset()  # observation
         self.test_pvm.reset()  # reset portfolio vector memory
         done = False
         steps = 0
