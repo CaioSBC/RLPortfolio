@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from rl_portfolio.architecture import EIIE
@@ -41,21 +42,27 @@ class PolicyGradient:
         lr=1e-3,
         action_noise=0,
         optimizer=AdamW,
+        use_tensorboard=False,
+        summary_writer_kwargs=None,
         device="cpu",
     ):
         """Initializes Policy Gradient for portfolio optimization.
 
         Args:
-          env: Training Environment.
-          policy: Policy architecture to be used.
-          policy_kwargs: Arguments to be used in the policy network.
-          validation_env: Validation environment.
-          batch_size: Batch size to train neural network.
-          lr: policy Neural network learning rate.
-          action_noise: Noise parameter (between 0 and 1) to be applied
-            during training.
-          optimizer: Optimizer of neural network.
-          device: Device where neural network is run.
+            env: Training Environment.
+            policy: Policy architecture to be used.
+            policy_kwargs: Arguments to be used in the policy network.
+            validation_env: Validation environment.
+            batch_size: Batch size to train neural network.
+            lr: policy Neural network learning rate.
+            action_noise: Noise parameter (between 0 and 1) to be applied
+                during training.
+            optimizer: Optimizer of neural network.
+            use_tensorboard: If true, training logs will be added to 
+                tensorboard.
+            summary_writer_kwargs: Arguments to be used in PyTorch's
+                tensorboard summary writer.
+            device: Device where neural network is run.
         """
         self.policy = policy
         self.policy_kwargs = {} if policy_kwargs is None else policy_kwargs
@@ -64,6 +71,13 @@ class PolicyGradient:
         self.lr = lr
         self.action_noise = action_noise
         self.optimizer = optimizer
+        if use_tensorboard:
+            summary_writer_kwargs = (
+                {} if summary_writer_kwargs is None else summary_writer_kwargs
+            )
+            self.summary_writer = (
+                SummaryWriter(**summary_writer_kwargs) if use_tensorboard else None
+            )
         self.device = device
         self._setup_train(env, self.policy, self.batch_size, self.lr, self.optimizer)
 
@@ -87,7 +101,9 @@ class PolicyGradient:
         # replay buffer and portfolio vector memory
         self.train_batch_size = batch_size
         self.train_buffer = SequentialReplayBuffer(capacity=batch_size)
-        self.train_pvm = PortfolioVectorMemory(self.train_env.episode_length, env.portfolio_size)
+        self.train_pvm = PortfolioVectorMemory(
+            self.train_env.episode_length, env.portfolio_size
+        )
 
         # dataset and dataloader
         dataset = RLDataset(self.train_buffer)
@@ -160,7 +176,9 @@ class PolicyGradient:
 
         # replay buffer and portfolio vector memory
         self.test_buffer = SequentialReplayBuffer(capacity=batch_size)
-        self.test_pvm = PortfolioVectorMemory(self.test_env.episode_length, env.portfolio_size)
+        self.test_pvm = PortfolioVectorMemory(
+            self.test_env.episode_length, env.portfolio_size
+        )
 
         # dataset and dataloader
         dataset = RLDataset(self.test_buffer)
