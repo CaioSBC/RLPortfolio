@@ -43,6 +43,7 @@ environment_dict = PortfolioOptimizationEnv(
     return_last_action=True,
 )
 
+
 def test_pvm_properties():
     """Tests vector memory initial properties."""
     assert len(pvm.memory) == 5
@@ -94,6 +95,7 @@ def test_pvm_reset():
     )
     assert pvm.index == 0
 
+
 def test_last_action():
     """Tests if memory's retrieved value is equal to environment's
     observation last action.
@@ -110,4 +112,7 @@ def test_last_action():
         done = terminal or truncated
         if not done:
             last_action = tmp_pvm.retrieve()
-            assert np.testing.assert_array_almost_equal(obs["last_action"], last_action) is None
+            assert (
+                np.testing.assert_array_almost_equal(obs["last_action"], last_action)
+                is None
+            )
