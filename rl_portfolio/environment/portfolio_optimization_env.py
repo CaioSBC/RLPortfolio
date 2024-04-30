@@ -253,63 +253,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._terminal = self._time_index >= len(self._sorted_times) - 1
 
         if self._terminal:
-            metrics_df = pd.DataFrame(
-                {
-                    "date": self._date_memory,
-                    "returns": self._portfolio_return_memory,
-                    "rewards": self._portfolio_reward_memory,
-                    "portfolio_values": self._asset_memory["final"],
-                }
-            )
-            metrics_df.set_index("date", inplace=True)
-
-            if self._plot_graphs:
-                plt.plot(metrics_df["portfolio_values"], "r")
-                plt.title("Portfolio Value Over Time")
-                plt.xlabel("Time")
-                plt.ylabel("Portfolio value")
-                plt.savefig(self._results_file / "portfolio_value.png")
-                plt.close()
-
-                plt.plot(self._portfolio_reward_memory, "r")
-                plt.title("Reward Over Time")
-                plt.xlabel("Time")
-                plt.ylabel("Reward")
-                plt.savefig(self._results_file / "reward.png")
-                plt.close()
-
-                plt.plot(self._actions_memory)
-                plt.title("Actions performed")
-                plt.xlabel("Time")
-                plt.ylabel("Weight")
-                plt.savefig(self._results_file / "actions.png")
-                plt.close()
-
-                qs.plots.snapshot(
-                    metrics_df["returns"],
-                    show=False,
-                    savefig=self._results_file / "portfolio_summary.png",
-                )
-
-            if self._print_metrics:
-                print("=================================")
-                print(
-                    "Initial portfolio value:{}".format(self._asset_memory["final"][0])
-                )
-                print(f"Final portfolio value: {self._portfolio_value}")
-                print(
-                    "Final accumulative portfolio value: {}".format(
-                        self._portfolio_value / self._asset_memory["final"][0]
-                    )
-                )
-                print(
-                    "Maximum DrawDown: {}".format(
-                        qs.stats.max_drawdown(metrics_df["portfolio_values"])
-                    )
-                )
-                print("Sharpe ratio: {}".format(qs.stats.sharpe(metrics_df["returns"])))
-                print("=================================")
-
+            self._terminal_routine()
         else:
             # transform action to numpy array (if it's a list)
             action = np.array(action, dtype=np.float32)
@@ -510,6 +454,72 @@ class PortfolioOptimizationEnv(gym.Env):
         self._df_price_variation[self._features] = self._df_price_variation[
             self._features
         ].astype("float32")
+
+    def _terminal_routine(self):
+        """Executes terminal routine (prints and plots). This function also adds a
+        "metrics" key to "_info" attribute with the episode's simulation metrics.
+        """
+        metrics_df = pd.DataFrame(
+            {
+                "date": self._date_memory,
+                "returns": self._portfolio_return_memory,
+                "rewards": self._portfolio_reward_memory,
+                "portfolio_values": self._asset_memory["final"],
+            }
+        )
+        metrics_df.set_index("date", inplace=True)
+
+        self._info["metrics"] = {
+            "value": self._portfolio_value,
+            "fapv": self._portfolio_value / self._asset_memory["final"][0],
+            "mdd": qs.stats.max_drawdown(metrics_df["portfolio_values"]),
+            "sharpe": qs.stats.sharpe(metrics_df["returns"]),
+        }
+
+        if self._plot_graphs:
+            plt.plot(metrics_df["portfolio_values"], "r")
+            plt.title("Portfolio Value Over Time")
+            plt.xlabel("Time")
+            plt.ylabel("Portfolio value")
+            plt.savefig(self._results_file / "portfolio_value.png")
+            plt.close()
+
+            plt.plot(self._portfolio_reward_memory, "r")
+            plt.title("Reward Over Time")
+            plt.xlabel("Time")
+            plt.ylabel("Reward")
+            plt.savefig(self._results_file / "reward.png")
+            plt.close()
+
+            plt.plot(self._actions_memory)
+            plt.title("Actions performed")
+            plt.xlabel("Time")
+            plt.ylabel("Weight")
+            plt.savefig(self._results_file / "actions.png")
+            plt.close()
+
+            qs.plots.snapshot(
+                metrics_df["returns"],
+                show=False,
+                savefig=self._results_file / "portfolio_summary.png",
+            )
+
+        if self._print_metrics:
+            print("=================================")
+            print("Initial portfolio value:{}".format(self._asset_memory["final"][0]))
+            print(f"Final portfolio value: {self._portfolio_value}")
+            print(
+                "Final accumulative portfolio value: {}".format(
+                    self._portfolio_value / self._asset_memory["final"][0]
+                )
+            )
+            print(
+                "Maximum DrawDown: {}".format(
+                    qs.stats.max_drawdown(metrics_df["portfolio_values"])
+                )
+            )
+            print("Sharpe ratio: {}".format(qs.stats.sharpe(metrics_df["returns"])))
+            print("=================================")
 
     def _softmax_normalization(self, actions):
         """Normalizes the action vector using softmax function.
