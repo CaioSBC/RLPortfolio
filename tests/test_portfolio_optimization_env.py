@@ -90,6 +90,8 @@ environment = PortfolioOptimizationEnv(
     features=["feature_1", "feature_2"],
     valuation_feature="feature_1",
     time_window=3,
+    print_metrics=False,
+    plot_graphs=False,
 )
 
 # environment with dict observation
@@ -101,6 +103,8 @@ environment_dict = PortfolioOptimizationEnv(
     valuation_feature="feature_1",
     time_window=3,
     return_last_action=True,
+    print_metrics=False,
+    plot_graphs=False,
 )
 
 # list of portfolio values

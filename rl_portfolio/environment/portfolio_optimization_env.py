@@ -80,6 +80,8 @@ class PortfolioOptimizationEnv(gym.Env):
         tic_column="tic",
         tics_in_portfolio="all",
         time_window=1,
+        print_metrics=True,
+        plot_graphs=True,
         cwd="./",
     ):
         """Initializes environment's instance.
@@ -111,6 +113,9 @@ class PortfolioOptimizationEnv(gym.Env):
             tics_in_portfolio: List of ticker symbols to be considered as part of the
                 portfolio. If "all", all tickers of input data are considered.
             time_window: Size of time window.
+            print_metrics: If True, performance metrics will be printed at the end of
+                episode.
+            plot_graphs: If True, graphs will be ploted and saved in the specified folder.
             cwd: Local repository in which resulting graphs will be saved.
         """
         self._time_window = time_window
@@ -126,6 +131,8 @@ class PortfolioOptimizationEnv(gym.Env):
         self._comission_fee_model = comission_fee_model
         self._features = features
         self._valuation_feature = valuation_feature
+        self._print_metrics = print_metrics
+        self._plot_graphs = plot_graphs
         self._cwd = Path(cwd)
 
         # results file
@@ -186,6 +193,38 @@ class PortfolioOptimizationEnv(gym.Env):
         self._portfolio_value = self._initial_amount
         self._terminal = False
 
+    def reset(self, seed=None, options=None):
+        """Resets the environment and returns it to its initial state (the
+        fist date of the dataframe).
+
+        Args:
+            seed: A seeding number to configure random values.
+            options: A dictionary with reset options. It's not used.
+
+        Note:
+            If the environment was created with "return_last_action" set to
+            True, the initial observation returned will be a Dict. If it's set
+            to False, the initial observation will be a Box. You can check the
+            observation space through the attribute "observation_space".
+
+        Returns:
+            A tuple (observation, info) with the initial observation and the
+            initial info dictionary.
+        """
+        super().reset(seed=seed)
+
+        # time_index must start a little bit in the future to implement lookback
+        self._time_index = self._time_window - 1
+        self._reset_memory()
+
+        self._observation, self._info = self._generate_observation_and_info(
+            self._time_index
+        )
+        self._portfolio_value = self._initial_amount
+        self._terminal = False
+
+        return self._observation, self._info
+
     def step(self, action):
         """Performs a simulation step.
 
@@ -224,48 +263,52 @@ class PortfolioOptimizationEnv(gym.Env):
             )
             metrics_df.set_index("date", inplace=True)
 
-            plt.plot(metrics_df["portfolio_values"], "r")
-            plt.title("Portfolio Value Over Time")
-            plt.xlabel("Time")
-            plt.ylabel("Portfolio value")
-            plt.savefig(self._results_file / "portfolio_value.png")
-            plt.close()
+            if self._plot_graphs:
+                plt.plot(metrics_df["portfolio_values"], "r")
+                plt.title("Portfolio Value Over Time")
+                plt.xlabel("Time")
+                plt.ylabel("Portfolio value")
+                plt.savefig(self._results_file / "portfolio_value.png")
+                plt.close()
 
-            plt.plot(self._portfolio_reward_memory, "r")
-            plt.title("Reward Over Time")
-            plt.xlabel("Time")
-            plt.ylabel("Reward")
-            plt.savefig(self._results_file / "reward.png")
-            plt.close()
+                plt.plot(self._portfolio_reward_memory, "r")
+                plt.title("Reward Over Time")
+                plt.xlabel("Time")
+                plt.ylabel("Reward")
+                plt.savefig(self._results_file / "reward.png")
+                plt.close()
 
-            plt.plot(self._actions_memory)
-            plt.title("Actions performed")
-            plt.xlabel("Time")
-            plt.ylabel("Weight")
-            plt.savefig(self._results_file / "actions.png")
-            plt.close()
+                plt.plot(self._actions_memory)
+                plt.title("Actions performed")
+                plt.xlabel("Time")
+                plt.ylabel("Weight")
+                plt.savefig(self._results_file / "actions.png")
+                plt.close()
 
-            print("=================================")
-            print("Initial portfolio value:{}".format(self._asset_memory["final"][0]))
-            print(f"Final portfolio value: {self._portfolio_value}")
-            print(
-                "Final accumulative portfolio value: {}".format(
-                    self._portfolio_value / self._asset_memory["final"][0]
+                qs.plots.snapshot(
+                    metrics_df["returns"],
+                    show=False,
+                    savefig=self._results_file / "portfolio_summary.png",
                 )
-            )
-            print(
-                "Maximum DrawDown: {}".format(
-                    qs.stats.max_drawdown(metrics_df["portfolio_values"])
-                )
-            )
-            print("Sharpe ratio: {}".format(qs.stats.sharpe(metrics_df["returns"])))
-            print("=================================")
 
-            qs.plots.snapshot(
-                metrics_df["returns"],
-                show=False,
-                savefig=self._results_file / "portfolio_summary.png",
-            )
+            if self._print_metrics:
+                print("=================================")
+                print(
+                    "Initial portfolio value:{}".format(self._asset_memory["final"][0])
+                )
+                print(f"Final portfolio value: {self._portfolio_value}")
+                print(
+                    "Final accumulative portfolio value: {}".format(
+                        self._portfolio_value / self._asset_memory["final"][0]
+                    )
+                )
+                print(
+                    "Maximum DrawDown: {}".format(
+                        qs.stats.max_drawdown(metrics_df["portfolio_values"])
+                    )
+                )
+                print("Sharpe ratio: {}".format(qs.stats.sharpe(metrics_df["returns"])))
+                print("=================================")
 
         else:
             # transform action to numpy array (if it's a list)
@@ -351,37 +394,149 @@ class PortfolioOptimizationEnv(gym.Env):
 
         return self._observation, self._reward, self._terminal, False, self._info
 
-    def reset(self, seed=None, options=None):
-        """Resets the environment and returns it to its initial state (the
-        fist date of the dataframe).
-
-        Args:
-            seed: A seeding number to configure random values.
-            options: A dictionary with reset options. It's not used.
-
-        Note:
-            If the environment was created with "return_last_action" set to
-            True, the initial observation returned will be a Dict. If it's set
-            to False, the initial observation will be a Box. You can check the
-            observation space through the attribute "observation_space".
+    def render(self, mode="human"):
+        """Renders the environment.
 
         Returns:
-            A tuple (observation, info) with the initial observation and the
-            initial info dictionary.
+            Observation of current simulation step.
         """
-        super().reset(seed=seed)
+        return self._observation
 
-        # time_index must start a little bit in the future to implement lookback
-        self._time_index = self._time_window - 1
-        self._reset_memory()
+    def enumerate_portfolio(self):
+        """Enumerates the current porfolio by showing the ticker symbols
+        of all the investments considered in the portfolio.
+        """
+        print("Index: 0. Tic: Cash")
+        for index, tic in enumerate(self._tic_list):
+            print(f"Index: {index + 1}. Tic: {tic}")
 
-        self._observation, self._info = self._generate_observation_and_info(
-            self._time_index
+    def _temporal_variation_df(self, periods=1):
+        """Calculates the temporal variation dataframe. For each feature, this
+        dataframe contains the rate of the current feature's value and the last
+        feature's value given a period. It's used to normalize the dataframe.
+
+        Args:
+            periods: Periods (in time indexes) to calculate temporal variation.
+
+        Returns:
+            Temporal variation dataframe.
+        """
+        df_temporal_variation = self._df.copy()
+        prev_columns = []
+        for column in self._features:
+            prev_column = f"prev_{column}"
+            prev_columns.append(prev_column)
+            df_temporal_variation[prev_column] = df_temporal_variation.groupby(
+                self._tic_column
+            )[column].shift(periods=periods)
+            df_temporal_variation[column] = (
+                df_temporal_variation[column] / df_temporal_variation[prev_column]
+            )
+        df_temporal_variation = (
+            df_temporal_variation.drop(columns=prev_columns)
+            .fillna(1)
+            .reset_index(drop=True)
         )
-        self._portfolio_value = self._initial_amount
-        self._terminal = False
+        return df_temporal_variation
 
-        return self._observation, self._info
+    def _normalize_dataframe(self, normalize):
+        """ "Normalizes the environment's dataframe.
+
+        Args:
+            normalize: Defines the normalization method applied to the dataframe.
+                Possible values are "by_previous_time", "by_fist_time_window_value",
+                "by_COLUMN_NAME" (where COLUMN_NAME must be changed to a real column
+                name) and a custom function. If None no normalization is done.
+
+        Note:
+            If a custom function is used in the normalization, it must have an
+            argument representing the environment's dataframe.
+        """
+        if type(normalize) == str:
+            if normalize == "by_fist_time_window_value":
+                print(
+                    "Normalizing {} by first time window value...".format(
+                        self._features
+                    )
+                )
+                self._df = self._temporal_variation_df(self._time_window - 1)
+            elif normalize == "by_previous_time":
+                print(f"Normalizing {self._features} by previous time...")
+                self._df = self._temporal_variation_df()
+            elif normalize.startswith("by_"):
+                normalizer_column = normalize[3:]
+                print(f"Normalizing {self._features} by {normalizer_column}")
+                for column in self._features:
+                    self._df[column] = self._df[column] / self._df[normalizer_column]
+        elif callable(normalize):
+            print("Applying custom normalization function...")
+            self._df = normalize(self._df)
+        else:
+            print("No normalization was performed.")
+
+    def _preprocess_data(self, order, normalize, tics_in_portfolio):
+        """Orders and normalizes the environment's dataframe.
+
+        Args:
+            order: If true, the dataframe will be ordered by ticker list
+                and datetime.
+            normalize: Defines the normalization method applied to the dataframe.
+                Possible values are "by_previous_time", "by_fist_time_window_value",
+                "by_COLUMN_NAME" (where COLUMN_NAME must be changed to a real column
+                name) and a custom function. If None no normalization is done.
+            tics_in_portfolio: List of ticker symbols to be considered as part of the
+                portfolio. If "all", all tickers of input data are considered.
+        """
+        # order time dataframe by tic and time
+        if order:
+            self._df = self._df.sort_values(by=[self._tic_column, self._time_column])
+        # defining price variation after ordering dataframe
+        self._df_price_variation = self._temporal_variation_df()
+        # select only stocks in portfolio
+        if tics_in_portfolio != "all":
+            self._df_price_variation = self._df_price_variation[
+                self._df_price_variation[self._tic_column].isin(tics_in_portfolio)
+            ]
+        # apply normalization
+        if normalize:
+            self._normalize_dataframe(normalize)
+        # transform str to datetime
+        self._df[self._time_column] = pd.to_datetime(self._df[self._time_column])
+        self._df_price_variation[self._time_column] = pd.to_datetime(
+            self._df_price_variation[self._time_column]
+        )
+        # transform numeric variables to float32 (compatibility with pytorch)
+        self._df[self._features] = self._df[self._features].astype("float32")
+        self._df_price_variation[self._features] = self._df_price_variation[
+            self._features
+        ].astype("float32")
+
+    def _softmax_normalization(self, actions):
+        """Normalizes the action vector using softmax function.
+
+        Returns:
+            Normalized action vector (portfolio vector).
+        """
+        numerator = np.exp(actions)
+        denominator = np.sum(np.exp(actions))
+        softmax_output = numerator / denominator
+        return softmax_output
+
+    def _generate_observation(self, state):
+        """Generate observation given the observation space. If "return_last_action"
+        is set to False, a three-dimensional box is returned. If it's set to True, a
+        dictionary is returned. The dictionary follows the standard below::
+
+            {
+            "state": Three-dimensional box representing the current state,
+            "last_action": One-dimensional box representing the last action
+            }
+        """
+        last_action = self._actions_memory[-1]
+        if self._return_last_action:
+            return {"state": state, "last_action": last_action}
+        else:
+            return state
 
     def _generate_observation_and_info(self, time_index):
         """Generates observation and information given a time index. It also updates
@@ -451,70 +606,6 @@ class PortfolioOptimizationEnv(gym.Env):
         }
         return self._generate_observation(state), info
 
-    def render(self, mode="human"):
-        """Renders the environment.
-
-        Returns:
-            Observation of current simulation step.
-        """
-        return self._observation
-
-    def _softmax_normalization(self, actions):
-        """Normalizes the action vector using softmax function.
-
-        Returns:
-            Normalized action vector (portfolio vector).
-        """
-        numerator = np.exp(actions)
-        denominator = np.sum(np.exp(actions))
-        softmax_output = numerator / denominator
-        return softmax_output
-
-    def enumerate_portfolio(self):
-        """Enumerates the current porfolio by showing the ticker symbols
-        of all the investments considered in the portfolio.
-        """
-        print("Index: 0. Tic: Cash")
-        for index, tic in enumerate(self._tic_list):
-            print(f"Index: {index + 1}. Tic: {tic}")
-
-    def _preprocess_data(self, order, normalize, tics_in_portfolio):
-        """Orders and normalizes the environment's dataframe.
-
-        Args:
-            order: If true, the dataframe will be ordered by ticker list
-                and datetime.
-            normalize: Defines the normalization method applied to the dataframe.
-                Possible values are "by_previous_time", "by_fist_time_window_value",
-                "by_COLUMN_NAME" (where COLUMN_NAME must be changed to a real column
-                name) and a custom function. If None no normalization is done.
-            tics_in_portfolio: List of ticker symbols to be considered as part of the
-                portfolio. If "all", all tickers of input data are considered.
-        """
-        # order time dataframe by tic and time
-        if order:
-            self._df = self._df.sort_values(by=[self._tic_column, self._time_column])
-        # defining price variation after ordering dataframe
-        self._df_price_variation = self._temporal_variation_df()
-        # select only stocks in portfolio
-        if tics_in_portfolio != "all":
-            self._df_price_variation = self._df_price_variation[
-                self._df_price_variation[self._tic_column].isin(tics_in_portfolio)
-            ]
-        # apply normalization
-        if normalize:
-            self._normalize_dataframe(normalize)
-        # transform str to datetime
-        self._df[self._time_column] = pd.to_datetime(self._df[self._time_column])
-        self._df_price_variation[self._time_column] = pd.to_datetime(
-            self._df_price_variation[self._time_column]
-        )
-        # transform numeric variables to float32 (compatibility with pytorch)
-        self._df[self._features] = self._df[self._features].astype("float32")
-        self._df_price_variation[self._features] = self._df_price_variation[
-            self._features
-        ].astype("float32")
-
     def _reset_memory(self):
         """Resets the environment's memory."""
         date_time = self._sorted_times[self._time_index]
@@ -536,86 +627,6 @@ class PortfolioOptimizationEnv(gym.Env):
         ]
         # memorize datetimes
         self._date_memory = [date_time]
-
-    def _generate_observation(self, state):
-        """Generate observation given the observation space. If "return_last_action"
-        is set to False, a three-dimensional box is returned. If it's set to True, a
-        dictionary is returned. The dictionary follows the standard below::
-
-            {
-            "state": Three-dimensional box representing the current state,
-            "last_action": One-dimensional box representing the last action
-            }
-        """
-        last_action = self._actions_memory[-1]
-        if self._return_last_action:
-            return {"state": state, "last_action": last_action}
-        else:
-            return state
-
-    def _normalize_dataframe(self, normalize):
-        """ "Normalizes the environment's dataframe.
-
-        Args:
-            normalize: Defines the normalization method applied to the dataframe.
-                Possible values are "by_previous_time", "by_fist_time_window_value",
-                "by_COLUMN_NAME" (where COLUMN_NAME must be changed to a real column
-                name) and a custom function. If None no normalization is done.
-
-        Note:
-            If a custom function is used in the normalization, it must have an
-            argument representing the environment's dataframe.
-        """
-        if type(normalize) == str:
-            if normalize == "by_fist_time_window_value":
-                print(
-                    "Normalizing {} by first time window value...".format(
-                        self._features
-                    )
-                )
-                self._df = self._temporal_variation_df(self._time_window - 1)
-            elif normalize == "by_previous_time":
-                print(f"Normalizing {self._features} by previous time...")
-                self._df = self._temporal_variation_df()
-            elif normalize.startswith("by_"):
-                normalizer_column = normalize[3:]
-                print(f"Normalizing {self._features} by {normalizer_column}")
-                for column in self._features:
-                    self._df[column] = self._df[column] / self._df[normalizer_column]
-        elif callable(normalize):
-            print("Applying custom normalization function...")
-            self._df = normalize(self._df)
-        else:
-            print("No normalization was performed.")
-
-    def _temporal_variation_df(self, periods=1):
-        """Calculates the temporal variation dataframe. For each feature, this
-        dataframe contains the rate of the current feature's value and the last
-        feature's value given a period. It's used to normalize the dataframe.
-
-        Args:
-            periods: Periods (in time indexes) to calculate temporal variation.
-
-        Returns:
-            Temporal variation dataframe.
-        """
-        df_temporal_variation = self._df.copy()
-        prev_columns = []
-        for column in self._features:
-            prev_column = f"prev_{column}"
-            prev_columns.append(prev_column)
-            df_temporal_variation[prev_column] = df_temporal_variation.groupby(
-                self._tic_column
-            )[column].shift(periods=periods)
-            df_temporal_variation[column] = (
-                df_temporal_variation[column] / df_temporal_variation[prev_column]
-            )
-        df_temporal_variation = (
-            df_temporal_variation.drop(columns=prev_columns)
-            .fillna(1)
-            .reset_index(drop=True)
-        )
-        return df_temporal_variation
 
     def _seed(self, seed=None):
         """Seeds the sources of randomness of this environment to guarantee
