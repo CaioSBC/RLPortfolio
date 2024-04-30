@@ -58,7 +58,7 @@ class PolicyGradient:
             action_noise: Noise parameter (between 0 and 1) to be applied
                 during training.
             optimizer: Optimizer of neural network.
-            use_tensorboard: If true, training logs will be added to 
+            use_tensorboard: If true, training logs will be added to
                 tensorboard.
             summary_writer_kwargs: Arguments to be used in PyTorch's
                 tensorboard summary writer.
@@ -117,10 +117,13 @@ class PolicyGradient:
         Args:
             episodes: Number of episodes to simulate.
         """
+        gradient_step = 0
+
         for i in tqdm(range(1, episodes + 1)):
             obs, info = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
             done = False
+            metrics = {"rewards": []}
 
             while not done:
                 # define last_action and action and update portfolio vector memory
@@ -139,18 +142,50 @@ class PolicyGradient:
                 exp = (obs, last_action, info["price_variation"], info["trf_mu"])
                 self.train_buffer.append(exp)
 
+                # log rewards
+                metrics["rewards"].append(reward)
+
+                # if episode ended, get metrics to log
+                if "metrics" in info:
+                    metrics.update(info["metrics"])
+
                 # update policy networks
                 if len(self.train_buffer) == self.train_batch_size:
-                    self._gradient_ascent()
+                    policy_loss = self._gradient_ascent()
+
+                    # log policy loss
+                    gradient_step += 1
+                    self.summary_writer.add_scalar(
+                        "Loss/Train", policy_loss, gradient_step
+                    )
 
                 obs = next_obs
 
             # gradient ascent with episode remaining buffer data
-            self._gradient_ascent()
+            policy_loss = self._gradient_ascent()
+
+            # log policy loss
+            gradient_step += 1
+            self.summary_writer.add_scalar("Loss/Train", policy_loss, gradient_step)
+
+            # log training metrics
+            if self.summary_writer:
+                self.summary_writer.add_scalar(
+                    "Final Accumulative Portfolio Value/Train", metrics["fapv"], i
+                )
+                self.summary_writer.add_scalar(
+                    "Maximum DrawDown/Train", metrics["mdd"], i
+                )
+                self.summary_writer.add_scalar(
+                    "Sharpe Ratio/Train", metrics["sharpe"], i
+                )
+                self.summary_writer.add_scalar(
+                    "Mean Reward/Train", np.mean(metrics["rewards"]), i
+                )
 
             # validation step
             if self.validation_env:
-                self.test(self.validation_env)
+                self.test(self.validation_env, log_index=i)
 
     def _setup_test(self, env, policy, batch_size, lr, optimizer):
         """Initializes algorithm before testing.
@@ -187,22 +222,29 @@ class PolicyGradient:
         )
 
     def test(
-        self, env, policy=None, online_training_period=10, lr=None, optimizer=None
+        self,
+        env,
+        policy=None,
+        online_training_period=10,
+        lr=None,
+        optimizer=None,
+        log_index=0,
     ):
         """Tests the policy with online learning.
 
         Args:
-          env: Environment to be used in testing.
-          policy: Policy architecture to be used. If None, it will use the training
-            architecture.
-          online_training_period: Period in which an online training will occur. To
-            disable online learning, use a very big value.
-          batch_size: Batch size to train neural network. If None, it will use the
-            training batch size.
-          lr: Policy neural network learning rate. If None, it will use the training
-            learning rate
-          optimizer: Optimizer of neural network. If None, it will use the training
-            optimizer
+            env: Environment to be used in testing.
+            policy: Policy architecture to be used. If None, it will use the training
+                architecture.
+            online_training_period: Period in which an online training will occur. To
+                disable online learning, use a very big value.
+            batch_size: Batch size to train neural network. If None, it will use the
+                training batch size.
+            lr: Policy neural network learning rate. If None, it will use the training
+                learning rate.
+            optimizer: Optimizer of neural network. If None, it will use the training
+                optimizer.
+            log_index: Index to be used to log metrics.
 
         Note:
             To disable online learning, set learning rate to 0 or a very big online
@@ -214,6 +256,7 @@ class PolicyGradient:
         self.test_pvm.reset()  # reset portfolio vector memory
         done = False
         steps = 0
+        metrics = {"rewards": []}
 
         while not done:
             steps += 1
@@ -231,17 +274,42 @@ class PolicyGradient:
             exp = (obs, last_action, info["price_variation"], info["trf_mu"])
             self.test_buffer.append(exp)
 
+            # log rewards
+            metrics["rewards"].append(reward)
+
+            # if episode ended, get metrics to log
+            if "metrics" in info:
+                metrics.update(info["metrics"])
+
             # update policy networks
             if steps % online_training_period == 0:
                 self._gradient_ascent(test=True)
 
             obs = next_obs
 
+        # log test metrics
+        if self.summary_writer:
+            self.summary_writer.add_scalar(
+                "Final Accumulative Portfolio Value/Test", metrics["fapv"], log_index
+            )
+            self.summary_writer.add_scalar(
+                "Maximum DrawDown/Test", metrics["mdd"], log_index
+            )
+            self.summary_writer.add_scalar(
+                "Sharpe Ratio/Test", metrics["sharpe"], log_index
+            )
+            self.summary_writer.add_scalar(
+                "Mean Reward/Test", np.mean(metrics["rewards"]), log_index
+            )
+
     def _gradient_ascent(self, test=False):
         """Performs the gradient ascent step in the policy gradient algorithm.
 
         Args:
             test: If true, it uses the test dataloader and policy.
+
+        Returns:
+            Negative of policy loss (since it's gradient ascent)
         """
         # get batch data from dataloader
         obs, last_actions, price_variations, trf_mu = (
@@ -273,3 +341,5 @@ class PolicyGradient:
             self.train_policy.zero_grad()
             policy_loss.backward()
             self.train_optimizer.step()
+
+        return -policy_loss
