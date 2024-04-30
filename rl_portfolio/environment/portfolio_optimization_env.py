@@ -99,8 +99,9 @@ class PortfolioOptimizationEnv(gym.Env):
             reward_scaling: A scaling factor to multiply the reward function. This
                 factor can help training.
             comission_fee_model: Model used to simulate comission fee. Possible values
-                are "trf" (for transaction remainder factor model) and "wvm" (for weights
-                vector modifier model). If None, commission fees are not considered.
+                are "trf" (for transaction remainder factor model), "trf_approx" (for 
+                a faster approximate version of "trf") and "wvm" (for weights vector 
+                modifier model). If None, commission fees are not considered.
             comission_fee_pct: Percentage to be used in comission fee. It must be a value
                 between 0 and 1.
             features: List of features to be considered in the observation space. The
@@ -278,31 +279,17 @@ class PortfolioOptimizationEnv(gym.Env):
 
             # if using weights vector modifier, we need to modify weights vector
             if self._comission_fee_model == "wvm":
-                delta_weights = weights - last_weights
-                delta_assets = delta_weights[1:]  # disconsider
-                # calculate fees considering weights modification
-                fees = np.sum(np.abs(delta_assets * self._portfolio_value))
-                if fees > weights[0] * self._portfolio_value:
-                    weights = last_weights
-                    # maybe add negative reward
-                else:
-                    portfolio = weights * self._portfolio_value
-                    portfolio[0] -= fees
-                    self._portfolio_value = np.sum(portfolio)  # new portfolio value
-                    weights = portfolio / self._portfolio_value  # new weights
+                weights, self._portfolio_value = self._apply_wvm_fee(
+                    weights, last_weights
+                )
             elif self._comission_fee_model == "trf":
-                last_mu = 1
-                mu = 1 - 2 * self._comission_fee_pct + self._comission_fee_pct**2
-                while abs(mu - last_mu) > 1e-10:
-                    last_mu = mu
-                    mu = (
-                        1
-                        - self._comission_fee_pct * weights[0]
-                        - (2 * self._comission_fee_pct - self._comission_fee_pct**2)
-                        * np.sum(np.maximum(last_weights[1:] - mu * weights[1:], 0))
-                    ) / (1 - self._comission_fee_pct * weights[0])
-                self._info["trf_mu"] = mu
-                self._portfolio_value = mu * self._portfolio_value
+                self._info["trf_mu"], self._portfolio_value = self._apply_trf_fee(
+                    weights, last_weights
+                )
+            elif self._comission_fee_model == "trf_approx":
+                self._info["trf_mu"], self._portfolio_value = (
+                    self._apply_trf_approx_fee(weights, last_weights)
+                )
 
             # save initial portfolio value of this time step
             self._asset_memory["initial"].append(self._portfolio_value)
@@ -615,6 +602,72 @@ class PortfolioOptimizationEnv(gym.Env):
             "price_variation": self._price_variation,
         }
         return self._generate_observation(state), info
+
+    def _apply_wvm_fee(self, weights, last_weights):
+        """Applies weights vector modifier fee model.
+
+        Args:
+            weights: Current portfolio weights (current agent action).
+            last_weights: Portfolio weights at the end of last step.
+
+        Returns:
+            New portfolio weights after fees were applied and new portfolio value.
+        """
+        delta_weights = weights - last_weights
+        delta_assets = delta_weights[1:]  # disconsider cash
+        # calculate fees considering weights modification
+        fees = np.sum(np.abs(delta_assets * self._portfolio_value))
+        if fees > weights[0] * self._portfolio_value:
+            return last_weights, self._portfolio_value
+            # maybe add negative reward
+        else:
+            portfolio = weights * self._portfolio_value
+            portfolio[0] -= fees
+            new_portfolio_value = np.sum(portfolio)  # new portfolio value
+            new_weights = portfolio / new_portfolio_value  # new weights
+            return new_weights, new_portfolio_value
+
+    def _apply_trf_fee(self, weights, last_weights):
+        """Applies transaction remainder factor fee model.
+
+        Args:
+            weights: Current portfolio weights (current agent action).
+            last_weights: Portfolio weights at the end of last step.
+
+        Returns:
+            Calculated mu factor and new portfolio_value.
+        """
+        last_mu = 1
+        mu = 1 - 2 * self._comission_fee_pct + self._comission_fee_pct**2
+        while abs(mu - last_mu) > 1e-10:
+            last_mu = mu
+            mu = (
+                1
+                - self._comission_fee_pct * weights[0]
+                - (2 * self._comission_fee_pct - self._comission_fee_pct**2)
+                * np.sum(np.maximum(last_weights[1:] - mu * weights[1:], 0))
+            ) / (1 - self._comission_fee_pct * weights[0])
+        new_portfolio_value = mu * self._portfolio_value
+        return mu, new_portfolio_value
+
+    def _apply_trf_approx_fee(self, weights, last_weights):
+        """Applies an approximate version of transaction remainder factor
+        fee model. This version is faster and the difference between the
+        approximate value and the true value is O(c^2), where c is the 
+        commission fee.
+
+        Args:
+            weights: Current portfolio weights (current agent action).
+            last_weights: Portfolio weights at the end of last step.
+
+        Returns:
+            Calculated mu factor and new portfolio_value.
+        """
+        mu = 1 - self._comission_fee_pct * np.sum(
+            np.abs(weights[1:] - last_weights[1:])
+        )
+        new_portfolio_value = mu * self._portfolio_value
+        return mu, new_portfolio_value
 
     def _reset_memory(self):
         """Resets the environment's memory."""
