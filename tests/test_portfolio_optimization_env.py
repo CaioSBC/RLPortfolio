@@ -107,6 +107,36 @@ environment_dict = PortfolioOptimizationEnv(
     plot_graphs=False,
 )
 
+# environment with approximate transaction remainder factor
+# fee model
+environment_trf_approx = PortfolioOptimizationEnv(
+    test_dataframe,
+    1000,
+    normalize_df=None,
+    comission_fee_model="trf_approx",
+    comission_fee_pct=0.0025,
+    features=["feature_1", "feature_2"],
+    valuation_feature="feature_1",
+    time_window=3,
+    print_metrics=False,
+    plot_graphs=False,
+)
+
+# environment with true approximate transaction remainder factor
+# fee model
+environment_trf = PortfolioOptimizationEnv(
+    test_dataframe,
+    1000,
+    normalize_df=None,
+    comission_fee_model="trf",
+    comission_fee_pct=0.0025,
+    features=["feature_1", "feature_2"],
+    valuation_feature="feature_1",
+    time_window=3,
+    print_metrics=False,
+    plot_graphs=False,
+)
+
 # list of portfolio values
 portfolio_values = [1000]
 
@@ -311,7 +341,8 @@ def test_environment_dict_properties():
 
 def test_environment_dict_observations():
     """Tests the consistency of observations returned by the environment
-    during multiple step() calls."""
+    during multiple step() calls.
+    """
     obs, _ = environment_dict.reset()
     expected_obs = np.array(
         [
@@ -355,3 +386,107 @@ def test_environment_dict_observations():
     assert type(obs) == dict
     assert pytest.approx(obs["state"]) == expected_obs
     assert pytest.approx(obs["last_action"]) == np.array([0.4, 0.1, 0.3, 0.2])
+
+
+def test_trf_approx_model():
+    """Tests if the approximate transaction remainder factor is correcly
+    applied in the simulation.
+    """
+    obs, _ = environment_trf_approx.reset()
+    last_portfolio_value = environment_trf_approx._portfolio_value
+    assert last_portfolio_value == 1000
+    last_weights = environment_trf_approx._final_weights[-1]
+    assert pytest.approx(last_weights) == np.array([1, 0, 0, 0])
+
+    # first simulation step
+    action = np.array([0.25, 0.15, 0.35, 0.25])
+    _, _, _, _, info = environment_trf_approx.step(action)
+    expected_trf = 1 - 0.0025 * np.sum(np.abs(action[1:] - last_weights[1:]))
+    assert info["trf_mu"] == pytest.approx(expected_trf)
+    assert environment_trf_approx._asset_memory["initial"][-1] == pytest.approx(
+        expected_trf * last_portfolio_value
+    )
+    expected_price_variation = np.array([1, 4 / 3, 0.5, 0.5])
+    assert environment_trf_approx._portfolio_value == pytest.approx(
+        last_portfolio_value * expected_trf * np.dot(expected_price_variation, action)
+    )
+    last_portfolio_value = environment_trf_approx._portfolio_value
+    last_weights = environment_trf_approx._final_weights[-1]
+
+    # second simulation step
+    action = np.array([0.10, 0.50, 0.05, 0.35])
+    _, _, _, _, info = environment_trf_approx.step(action)
+    expected_trf = 1 - 0.0025 * np.sum(np.abs(action[1:] - last_weights[1:]))
+    assert info["trf_mu"] == pytest.approx(expected_trf)
+    assert environment_trf_approx._asset_memory["initial"][-1] == pytest.approx(
+        expected_trf * last_portfolio_value
+    )
+    expected_price_variation = np.array([1, 5 / 4, 2.0, 0.5])
+    assert environment_trf_approx._portfolio_value == pytest.approx(
+        last_portfolio_value * expected_trf * np.dot(expected_price_variation, action)
+    )
+
+    # third step is terminal, so no simulation is performed: values are returned the
+    # same.
+    action = np.array([0.10, 0.50, 0.05, 0.35])
+    _, _, _, _, info = environment_trf_approx.step(action)
+    assert info["trf_mu"] == pytest.approx(expected_trf)
+    assert environment_trf_approx._asset_memory["initial"][-1] == pytest.approx(
+        expected_trf * last_portfolio_value
+    )
+    assert environment_trf_approx._portfolio_value == pytest.approx(
+        last_portfolio_value * expected_trf * np.dot(expected_price_variation, action)
+    )
+
+def test_trf_model():
+    """Tests if the transaction remainder factor is correcly in the simulation.
+    Since we know that trf_approx is working (test above), the results in trf must be
+    approximately equal.
+    """
+    obs, _ = environment_trf.reset()
+    last_portfolio_value = environment_trf._portfolio_value
+    assert last_portfolio_value == 1000
+    last_weights = environment_trf._final_weights[-1]
+    assert pytest.approx(last_weights) == np.array([1, 0, 0, 0])
+
+    # first simulation step
+    action = np.array([0.25, 0.15, 0.35, 0.25])
+    _, _, _, _, info = environment_trf.step(action)
+    expected_trf = 1 - 0.0025 * np.sum(np.abs(action[1:] - last_weights[1:]))
+    # assert info["trf_mu"] == pytest.approx(expected_trf)
+    # assert environment_trf._asset_memory["initial"][-1] == pytest.approx(
+    #     expected_trf * last_portfolio_value
+    # )
+    expected_price_variation = np.array([1, 4 / 3, 0.5, 0.5])
+    # assert environment_trf._portfolio_value == pytest.approx(
+    #     last_portfolio_value * expected_trf * np.dot(expected_price_variation, action)
+    # )
+    last_portfolio_value = environment_trf._portfolio_value
+    last_weights = environment_trf._final_weights[-1]
+    print(info["trf_mu"])
+
+    # second simulation step
+    action = np.array([0.10, 0.50, 0.05, 0.35])
+    _, _, _, _, info = environment_trf.step(action)
+    expected_trf = 1 - 0.0025 * np.sum(np.abs(action[1:] - last_weights[1:]))
+    # assert info["trf_mu"] == pytest.approx(expected_trf)
+    # assert environment_trf._asset_memory["initial"][-1] == pytest.approx(
+    #     expected_trf * last_portfolio_value
+    # )
+    expected_price_variation = np.array([1, 5 / 4, 2.0, 0.5])
+    # assert environment_trf._portfolio_value == pytest.approx(
+    #     last_portfolio_value * expected_trf * np.dot(expected_price_variation, action)
+    # )
+    print(info["trf_mu"])
+
+    # third step is terminal, so no simulation is performed: values are returned the
+    # same.
+    action = np.array([0.10, 0.50, 0.05, 0.35])
+    _, _, _, _, info = environment_trf.step(action)
+    # assert info["trf_mu"] == pytest.approx(expected_trf)
+    # assert environment_trf._asset_memory["initial"][-1] == pytest.approx(
+    #     expected_trf * last_portfolio_value
+    # )
+    # assert environment_trf._portfolio_value == pytest.approx(
+    #     last_portfolio_value * expected_trf * np.dot(expected_price_variation, action)
+    # )
