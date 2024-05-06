@@ -643,7 +643,7 @@ class PortfolioOptimizationEnv(gym.Env):
             last_mu = mu
             mu = (
                 1
-                - self._comission_fee_pct * weights[0]
+                - self._comission_fee_pct * last_weights[0]
                 - (2 * self._comission_fee_pct - self._comission_fee_pct**2)
                 * np.sum(np.maximum(last_weights[1:] - mu * weights[1:], 0))
             ) / (1 - self._comission_fee_pct * weights[0])
