@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import copy
+import torch
+
 from random import randint
 from random import random
 
@@ -50,3 +53,20 @@ def apply_portfolio_noise(portfolio, epsilon=0.0):
         new_portfolio[i] -= difference
         new_portfolio[target_index] += difference
     return new_portfolio
+
+@torch.no_grad
+def apply_parameter_noise(model, mean=0.0, std=0.0):
+    """Apply gaussian/normal noise to neural network. 
+    
+    Arg:
+        model: PyTorch model to add parameter noise.
+        mean: Mean of gaussian/normal distribution.
+        std: Standard deviation of gaussian/normal distribution.
+
+    Returns:
+        Copy of model with parameter noise.
+    """
+    noise_model = copy.deepcopy(model)
+    for param in noise_model.parameters():
+        param += torch.normal(mean, std, size=param.shape)
+    return noise_model

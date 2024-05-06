@@ -13,6 +13,7 @@ from rl_portfolio.architecture import EIIE
 from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.utils import apply_portfolio_noise
+from rl_portfolio.utils import apply_parameter_noise
 from rl_portfolio.utils import RLDataset
 
 
@@ -41,6 +42,7 @@ class PolicyGradient:
         batch_size=100,
         lr=1e-3,
         action_noise=0,
+        parameter_noise=0,
         optimizer=AdamW,
         use_tensorboard=False,
         summary_writer_kwargs=None,
@@ -57,6 +59,8 @@ class PolicyGradient:
             lr: policy Neural network learning rate.
             action_noise: Noise parameter (between 0 and 1) to be applied
                 during training.
+            parameter_noise: Standard deviation of gaussian noise applied
+                policy network parameters.
             optimizer: Optimizer of neural network.
             use_tensorboard: If true, training logs will be added to
                 tensorboard.
@@ -70,6 +74,7 @@ class PolicyGradient:
         self.batch_size = batch_size
         self.lr = lr
         self.action_noise = action_noise
+        self.parameter_noise = parameter_noise
         self.optimizer = optimizer
         if use_tensorboard:
             summary_writer_kwargs = (
@@ -126,13 +131,22 @@ class PolicyGradient:
             metrics = {"rewards": []}
 
             while not done:
-                # define last_action and action and update portfolio vector memory
+                # define last_action and action
                 last_action = self.train_pvm.retrieve()
                 obs_batch = np.expand_dims(obs, axis=0)
                 last_action_batch = np.expand_dims(last_action, axis=0)
-                action = apply_portfolio_noise(
-                    self.train_policy(obs_batch, last_action_batch), self.action_noise
+
+                # generate a train policy with noisy parameters
+                noisy_train_policy = apply_parameter_noise(
+                    self.train_policy, 0, self.parameter_noise
                 )
+
+                # apply noise to action output
+                action = apply_portfolio_noise(
+                    noisy_train_policy(obs_batch, last_action_batch), self.action_noise
+                )
+
+                # update portfolio vector memory
                 self.train_pvm.add(action)
 
                 # run simulation step
