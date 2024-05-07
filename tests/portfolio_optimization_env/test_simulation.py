@@ -86,7 +86,6 @@ test_dataframe = pd.DataFrame(
 environment = PortfolioOptimizationEnv(
     test_dataframe,
     1000,
-    normalize_df=None,
     features=["feature_1", "feature_2"],
     valuation_feature="feature_1",
     time_window=3,
@@ -98,7 +97,6 @@ environment = PortfolioOptimizationEnv(
 environment_dict = PortfolioOptimizationEnv(
     test_dataframe,
     1000,
-    normalize_df=None,
     features=["feature_1", "feature_2"],
     valuation_feature="feature_1",
     time_window=3,
@@ -112,7 +110,6 @@ environment_dict = PortfolioOptimizationEnv(
 environment_trf_approx = PortfolioOptimizationEnv(
     test_dataframe,
     1000,
-    normalize_df=None,
     comission_fee_model="trf_approx",
     comission_fee_pct=0.0025,
     features=["feature_1", "feature_2"],
@@ -127,7 +124,6 @@ environment_trf_approx = PortfolioOptimizationEnv(
 environment_trf = PortfolioOptimizationEnv(
     test_dataframe,
     1000,
-    normalize_df=None,
     comission_fee_model="trf",
     comission_fee_pct=0.0025,
     features=["feature_1", "feature_2"],

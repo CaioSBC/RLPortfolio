@@ -36,11 +36,12 @@ test_dataframe = pd.DataFrame(
 environment_dict = PortfolioOptimizationEnv(
     test_dataframe,
     1000,
-    normalize_df=None,
     features=["feature_1"],
     valuation_feature="feature_1",
     time_window=1,
     return_last_action=True,
+    print_metrics=False,
+    plot_graphs=False,
 )
 
 

@@ -69,7 +69,8 @@ class PortfolioOptimizationEnv(gym.Env):
         initial_amount,
         order_df=True,
         return_last_action=False,
-        normalize_df="by_previous_time",
+        data_normalization=None,
+        state_normalization=None,
         reward_scaling=1,
         comission_fee_model="trf",
         comission_fee_pct=0,
@@ -92,18 +93,25 @@ class PortfolioOptimizationEnv(gym.Env):
             order_df: If True input dataframe is ordered by time.
             return_last_action: If True, observations also return the last performed
                 action. Note that, in that case, the observation space is a Dict.
-            normalize_df: Defines the normalization method applied to input dataframe.
-                Possible values are "by_previous_time", "by_fist_time_window_value",
-                "by_COLUMN_NAME" (where COLUMN_NAME must be changed to a real column
-                name) and a custom function. If None no normalization is done.
+            data_normalization: Defines the normalization method applied to input 
+                dataframe. Possible values are "by_previous_time", "by_fist_time_
+                window_value", "by_COLUMN_NAME" (where COLUMN_NAME must be changed to
+                a real column name) and a custom function. If None, no normalization 
+                is done.
+            state_normalization: Defines the normalization method applied to the state
+                output during simulation. Possible values are "by_initial_value",
+                "by_last_value", "by_initial_FEATURE_NAME", "by_last_FEATURE_NAME"
+                (where FEATURE_NAME must be change to the name of the feature used
+                as normalizer) and a custgom function. If None, no normalization is
+                done.
             reward_scaling: A scaling factor to multiply the reward function. This
                 factor can help training.
             comission_fee_model: Model used to simulate comission fee. Possible values
-                are "trf" (for transaction remainder factor model), "trf_approx" (for 
-                a faster approximate version of "trf") and "wvm" (for weights vector 
+                are "trf" (for transaction remainder factor model), "trf_approx" (for
+                a faster approximate version of "trf") and "wvm" (for weights vector
                 modifier model). If None, commission fees are not considered.
-            comission_fee_pct: Percentage to be used in comission fee. It must be a value
-                between 0 and 1.
+            comission_fee_pct: Percentage to be used in comission fee. It must be a
+                value between 0 and 1.
             features: List of features to be considered in the observation space. The
                 items of the list must be names of columns of the input dataframe.
             valuation_feature: Feature to be considered in the portfolio value calculation.
@@ -126,6 +134,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._tic_column = tic_column
         self._df = df
         self._initial_amount = initial_amount
+        self._state_normalization = state_normalization
         self._return_last_action = return_last_action
         self._reward_scaling = reward_scaling
         self._comission_fee_pct = comission_fee_pct
@@ -144,7 +153,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._df_price_variation = None
 
         # preprocess data
-        self._preprocess_data(order_df, normalize_df, tics_in_portfolio)
+        self._preprocess_data(order_df, data_normalization, tics_in_portfolio)
 
         # dims and spaces
         self._tic_list = self._df[self._tic_column].unique()
@@ -519,6 +528,39 @@ class PortfolioOptimizationEnv(gym.Env):
         softmax_output = numerator / denominator
         return softmax_output
 
+    def _normalize_state(self, state):
+        """Applies a normalization method to the state matrix.
+
+        Args:
+            state: State to apply the normalization method.
+
+        Returns:
+            Normalized state.
+        """
+        norm_state = state.copy()
+        feature_size = state.shape[0]
+        tic_size = state.shape[1]
+        if type(self._state_normalization) == str:
+            if self._state_normalization == "by_last_value":
+                last_values = state[:, :, -1].reshape(feature_size, tic_size, 1)
+                norm_state = state / last_values
+            elif self._state_normalization == "by_initial_value":
+                initial_values = state[:, :, 0].reshape(feature_size, tic_size, 1)
+                norm_state = state / initial_values
+            elif self._state_normalization.startswith("by_last_"):
+                feature = self._state_normalization[8:]
+                feature_index = self._features.index(feature)
+                last_values = state[feature_index, :, -1].reshape(1, tic_size, 1)
+                norm_state = state / last_values
+            elif self._state_normalization.startswith("by_initial_"):
+                feature = self._state_normalization[8:]
+                feature_index = self._features.index(feature)
+                initial_values = state[feature_index, :, -1].reshape(1, tic_size, 1)
+                norm_state = state / initial_values
+        elif type(self._state_normalization) == callable:
+            norm_state = self._state_normalization(state)
+        return norm_state
+
     def _generate_observation(self, state):
         """Generate observation given the observation space. If "return_last_action"
         is set to False, a three-dimensional box is returned. If it's set to True, a
@@ -601,7 +643,7 @@ class PortfolioOptimizationEnv(gym.Env):
             "data": self._data,
             "price_variation": self._price_variation,
         }
-        return self._generate_observation(state), info
+        return self._generate_observation(self._normalize_state(state)), info
 
     def _apply_wvm_fee(self, weights, last_weights):
         """Applies weights vector modifier fee model.
@@ -653,7 +695,7 @@ class PortfolioOptimizationEnv(gym.Env):
     def _apply_trf_approx_fee(self, weights, last_weights):
         """Applies an approximate version of transaction remainder factor
         fee model. This version is faster and the difference between the
-        approximate value and the true value is O(c^2), where c is the 
+        approximate value and the true value is O(c^2), where c is the
         commission fee.
 
         Args:
