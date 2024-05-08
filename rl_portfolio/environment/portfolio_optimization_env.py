@@ -94,10 +94,9 @@ class PortfolioOptimizationEnv(gym.Env):
             return_last_action: If True, observations also return the last performed
                 action. Note that, in that case, the observation space is a Dict.
             data_normalization: Defines the normalization method applied to input 
-                dataframe. Possible values are "by_previous_time", "by_fist_time_
-                window_value", "by_COLUMN_NAME" (where COLUMN_NAME must be changed to
-                a real column name) and a custom function. If None, no normalization 
-                is done.
+                dataframe. Possible values are "by_previous_time", "by_COLUMN_NAME"
+                (where COLUMN_NAME must be changed to a real column name) and a 
+                custom function. If None, no normalization is done.
             state_normalization: Defines the normalization method applied to the state
                 output during simulation. Possible values are "by_initial_value",
                 "by_last_value", "by_initial_FEATURE_NAME", "by_last_FEATURE_NAME"
@@ -393,14 +392,7 @@ class PortfolioOptimizationEnv(gym.Env):
             argument representing the environment's dataframe.
         """
         if type(normalize) == str:
-            if normalize == "by_fist_time_window_value":
-                print(
-                    "Normalizing {} by first time window value...".format(
-                        self._features
-                    )
-                )
-                self._df = self._temporal_variation_df(self._time_window - 1)
-            elif normalize == "by_previous_time":
+            if normalize == "by_previous_time":
                 print(f"Normalizing {self._features} by previous time...")
                 self._df = self._temporal_variation_df()
             elif normalize.startswith("by_"):
