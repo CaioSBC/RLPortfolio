@@ -545,9 +545,9 @@ class PortfolioOptimizationEnv(gym.Env):
                 last_values = state[feature_index, :, -1].reshape(1, tic_size, 1)
                 norm_state = state / last_values
             elif self._state_normalization.startswith("by_initial_"):
-                feature = self._state_normalization[8:]
+                feature = self._state_normalization[11:]
                 feature_index = self._features.index(feature)
-                initial_values = state[feature_index, :, -1].reshape(1, tic_size, 1)
+                initial_values = state[feature_index, :, 0].reshape(1, tic_size, 1)
                 norm_state = state / initial_values
         elif type(self._state_normalization) == callable:
             norm_state = self._state_normalization(state)

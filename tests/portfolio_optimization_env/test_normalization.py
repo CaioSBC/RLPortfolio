@@ -436,3 +436,163 @@ def test_groupby_scaler_norm():
             1.0,
         ]
     )
+
+
+def test_by_initial_value_state_norm():
+    env = PortfolioOptimizationEnv(
+        test_dataframe,
+        1000,
+        state_normalization="by_initial_value",
+        features=["feature_1", "feature_2"],
+        valuation_feature="feature_1",
+        time_window=3,
+        print_metrics=False,
+        plot_graphs=False,
+    )
+
+    obs, _ = env.reset()
+    expected_obs = np.array(
+        [
+            [[1.0, 2.0, 3.0], [1.0, 0.5, 0.25], [1.0, 0.5, 1.0]],
+            [[1.0, 0.5, 1 / 6], [1.0, 0.5, 0.25], [1.0, 0.5, 2.0]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+    obs, _, _, _, _ = env.step(np.array([1, 0, 0, 0]))
+    expected_obs = np.array(
+        [
+            [[1.0, 1.5, 2.0], [1.0, 0.5, 0.25], [1.0, 2.0, 1.0]],
+            [[1.0, 1 / 3, 4 / 3], [1.0, 0.5, 1.5], [1.0, 4.0, 2.0]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+    obs, _, _, _, _ = env.step(np.array([1, 0, 0, 0]))
+    expected_obs = np.array(
+        [
+            [[1.0, 4 / 3, 5 / 3], [1.0, 0.5, 1.0], [1.0, 0.5, 0.25]],
+            [[1.0, 4.0, 8.0], [1.0, 3.0, 6.0], [1.0, 0.5, 1.5]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+
+def test_by_last_value_state_norm():
+    env = PortfolioOptimizationEnv(
+        test_dataframe,
+        1000,
+        state_normalization="by_last_value",
+        features=["feature_1", "feature_2"],
+        valuation_feature="feature_1",
+        time_window=3,
+        print_metrics=False,
+        plot_graphs=False,
+    )
+
+    obs, _ = env.reset()
+    expected_obs = np.array(
+        [
+            [[1 / 3, 2 / 3, 1.0], [4.0, 2.0, 1.0], [1.0, 0.5, 1.0]],
+            [[6.0, 3.0, 1.0], [4.0, 2.0, 1.0], [0.5, 0.25, 1.0]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+    obs, _, _, _, _ = env.step(np.array([1, 0, 0, 0]))
+    expected_obs = np.array(
+        [
+            [[0.5, 0.75, 1.0], [4.0, 2.0, 1.0], [1.0, 2.0, 1.0]],
+            [[0.75, 0.25, 1.0], [2 / 3, 1 / 3, 1.0], [0.5, 2.0, 1.0]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+    obs, _, _, _, _ = env.step(np.array([1, 0, 0, 0]))
+    expected_obs = np.array(
+        [
+            [[0.6, 0.8, 1.0], [1.0, 0.5, 1.0], [4.0, 2.0, 1.0]],
+            [[0.125, 0.5, 1.0], [1 / 6, 0.5, 1.0], [2 / 3, 1 / 3, 1.0]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+
+def test_by_initial_feature_value_state_norm():
+    env = PortfolioOptimizationEnv(
+        test_dataframe,
+        1000,
+        state_normalization="by_initial_feature_1",
+        features=["feature_1", "feature_2"],
+        valuation_feature="feature_1",
+        time_window=3,
+        print_metrics=False,
+        plot_graphs=False,
+    )
+
+    obs, _ = env.reset()
+    expected_obs = np.array(
+        [
+            [[1.0, 2.0, 3.0], [1.0, 0.5, 0.25], [1.0, 0.5, 1.0]],
+            [[1.5, 0.75, 0.25], [1.0, 0.5, 0.25], [0.2, 0.1, 0.4]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+    obs, _, _, _, _ = env.step(np.array([1, 0, 0, 0]))
+    expected_obs = np.array(
+        [
+            [[1.0, 1.5, 2.0], [1.0, 0.5, 0.25], [1.0, 2.0, 1.0]],
+            [[0.375, 0.125, 0.5], [1.0, 0.5, 1.5], [0.2, 0.8, 0.4]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+    obs, _, _, _, _ = env.step(np.array([1, 0, 0, 0]))
+    expected_obs = np.array(
+        [
+            [[1.0, 4 / 3, 5 / 3], [1.0, 0.5, 1.0], [1.0, 0.5, 0.25]],
+            [[1/12, 1/3, 2/3], [1.0, 3.0, 6.0], [0.4, 0.2, 0.6]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+
+def test_by_last_feature_value_state_norm():
+    env = PortfolioOptimizationEnv(
+        test_dataframe,
+        1000,
+        state_normalization="by_last_feature_2",
+        features=["feature_1", "feature_2"],
+        valuation_feature="feature_1",
+        time_window=3,
+        print_metrics=False,
+        plot_graphs=False,
+    )
+
+    obs, _ = env.reset()
+    expected_obs = np.array(
+        [
+            [[4.0, 8.0, 12.0], [4.0, 2.0, 1.0], [2.5, 1.25, 2.5]],
+            [[6.0, 3.0, 1.0], [4.0, 2.0, 1.0], [0.5, 0.25, 1.0]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+    obs, _, _, _, _ = env.step(np.array([1, 0, 0, 0]))
+    expected_obs = np.array(
+        [
+            [[2.0, 3.0, 4.0], [2/3, 1/3, 1/6], [2.5, 5.0, 2.5]],
+            [[0.75, 0.25, 1.0], [2 / 3, 1 / 3, 1.0], [0.5, 2.0, 1.0]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
+
+    obs, _, _, _, _ = env.step(np.array([1, 0, 0, 0]))
+    expected_obs = np.array(
+        [
+            [[1.5, 2.0, 2.5], [1/6, 1/12, 1/6], [5/3, 5/6, 5/12]],
+            [[0.125, 0.5, 1.0], [1 / 6, 0.5, 1.0], [2 / 3, 1 / 3, 1.0]],
+        ]
+    )
+    assert pytest.approx(obs) == expected_obs
