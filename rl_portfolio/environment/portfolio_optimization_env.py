@@ -93,9 +93,9 @@ class PortfolioOptimizationEnv(gym.Env):
             order_df: If True input dataframe is ordered by time.
             return_last_action: If True, observations also return the last performed
                 action. Note that, in that case, the observation space is a Dict.
-            data_normalization: Defines the normalization method applied to input 
+            data_normalization: Defines the normalization method applied to input
                 dataframe. Possible values are "by_previous_time", "by_COLUMN_NAME"
-                (where COLUMN_NAME must be changed to a real column name) and a 
+                (where COLUMN_NAME must be changed to a real column name) and a
                 custom function. If None, no normalization is done.
             state_normalization: Defines the normalization method applied to the state
                 output during simulation. Possible values are "by_initial_value",
