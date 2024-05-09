@@ -76,6 +76,8 @@ class PolicyGradient:
         self.action_noise = action_noise
         self.parameter_noise = parameter_noise
         self.optimizer = optimizer
+
+        self.summary_writer = None
         if use_tensorboard:
             summary_writer_kwargs = (
                 {} if summary_writer_kwargs is None else summary_writer_kwargs
@@ -83,7 +85,21 @@ class PolicyGradient:
             self.summary_writer = (
                 SummaryWriter(**summary_writer_kwargs) if use_tensorboard else None
             )
+
         self.device = device
+        if "device" in self.policy_kwargs:
+            if self.policy_kwargs["device"] != self.device:
+                if self.device == "cpu":
+                    self.device = self.policy_kwargs["device"]
+                else:
+                    raise ValueError(
+                        "Different devices set in algorithm ({}) and policy ({}) arguments".format(
+                            self.device, self.policy_kwargs["device"]
+                        )
+                    )
+        else:
+            self.policy_kwargs["device"] = self.device
+
         self._setup_train(env, self.policy, self.batch_size, self.lr, self.optimizer)
 
     def _setup_train(self, env, policy, batch_size, lr, optimizer):
@@ -138,7 +154,7 @@ class PolicyGradient:
 
                 # generate a train policy with noisy parameters
                 noisy_train_policy = apply_parameter_noise(
-                    self.train_policy, 0, self.parameter_noise
+                    self.train_policy, 0, self.parameter_noise, self.device
                 )
 
                 # apply noise to action output
@@ -169,9 +185,10 @@ class PolicyGradient:
 
                     # log policy loss
                     gradient_step += 1
-                    self.summary_writer.add_scalar(
-                        "Loss/Train", policy_loss, gradient_step
-                    )
+                    if self.summary_writer:
+                        self.summary_writer.add_scalar(
+                            "Loss/Train", policy_loss, gradient_step
+                        )
 
                 obs = next_obs
 
@@ -180,7 +197,8 @@ class PolicyGradient:
 
             # log policy loss
             gradient_step += 1
-            self.summary_writer.add_scalar("Loss/Train", policy_loss, gradient_step)
+            if self.summary_writer:
+                self.summary_writer.add_scalar("Loss/Train", policy_loss, gradient_step)
 
             # log training metrics
             if self.summary_writer:

@@ -55,18 +55,19 @@ def apply_portfolio_noise(portfolio, epsilon=0.0):
     return new_portfolio
 
 @torch.no_grad
-def apply_parameter_noise(model, mean=0.0, std=0.0):
+def apply_parameter_noise(model, mean=0.0, std=0.0, device="cpu"):
     """Apply gaussian/normal noise to neural network. 
     
     Arg:
         model: PyTorch model to add parameter noise.
         mean: Mean of gaussian/normal distribution.
         std: Standard deviation of gaussian/normal distribution.
+        device: device of the model.
 
     Returns:
         Copy of model with parameter noise.
     """
     noise_model = copy.deepcopy(model)
     for param in noise_model.parameters():
-        param += torch.normal(mean, std, size=param.shape)
+        param += torch.normal(mean, std, size=param.shape).to(device)
     return noise_model
