@@ -3,5 +3,6 @@ numpy
 pandas
 quantstats
 scikit-learn
+tensorboard
 torch
 torch_geometric
