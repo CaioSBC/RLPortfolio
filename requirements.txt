@@ -1,6 +1,7 @@
+gymnasium
 numpy
 pandas
+quantstats
 scikit-learn
 torch
 torch_geometric
-gymnasium
