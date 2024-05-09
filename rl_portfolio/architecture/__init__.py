@@ -1,3 +1,3 @@
-from .eiie import EIIE
-from .ei3 import EI3
-from .gpm import GPM
+from rl_portfolio.architecture.eiie import EIIE
+from rl_portfolio.architecture.ei3 import EI3
+from rl_portfolio.architecture.gpm import GPM
