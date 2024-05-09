@@ -38,7 +38,7 @@ setup(
     include_package_data=True,
     keywords="rl_portfolio",
     name="rl_portfolio",
-    packages=find_packages(include=["rl_portfolio"]),
+    packages=find_packages(include=["rl_portfolio.*"]),
     setup_requires=setup_requirements,
     test_suite="tests",
     tests_require=test_requirements,
