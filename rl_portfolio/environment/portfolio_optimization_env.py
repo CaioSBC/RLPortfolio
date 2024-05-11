@@ -77,7 +77,7 @@ class PortfolioOptimizationEnv(gym.Env):
         features=["close", "high", "low"],
         valuation_feature="close",
         time_column="date",
-        time_format="%Y-%m-%d",
+        time_format=None,
         tic_column="tic",
         tics_in_portfolio="all",
         time_window=1,
@@ -116,7 +116,9 @@ class PortfolioOptimizationEnv(gym.Env):
             valuation_feature: Feature to be considered in the portfolio value calculation.
             time_column: Name of the dataframe's column that contain the datetimes that
                 index the dataframe.
-            time_format: Formatting string of time column.
+            time_format: Formatting string of time column (if format string is invalid,
+                an error will be raised). If None, time column will not be transformed
+                to datetime.
             tic_name: Name of the dataframe's column that contain ticker symbols.
             tics_in_portfolio: List of ticker symbols to be considered as part of the
                 portfolio. If "all", all tickers of input data are considered.
@@ -433,10 +435,13 @@ class PortfolioOptimizationEnv(gym.Env):
         if normalize:
             self._normalize_dataframe(normalize)
         # transform str to datetime
-        self._df[self._time_column] = pd.to_datetime(self._df[self._time_column])
-        self._df_price_variation[self._time_column] = pd.to_datetime(
-            self._df_price_variation[self._time_column]
-        )
+        if self._time_format is not None:
+            self._df[self._time_column] = pd.to_datetime(
+                self._df[self._time_column], format=self._time_format
+            )
+            self._df_price_variation[self._time_column] = pd.to_datetime(
+                self._df_price_variation[self._time_column], format=self._time_format
+            )
         # transform numeric variables to float32 (compatibility with pytorch)
         self._df[self._features] = self._df[self._features].astype("float32")
         self._df_price_variation[self._features] = self._df_price_variation[
@@ -461,36 +466,77 @@ class PortfolioOptimizationEnv(gym.Env):
             "value": self._portfolio_value,
             "fapv": self._portfolio_value / self._asset_memory["final"][0],
             "mdd": qs.stats.max_drawdown(metrics_df["portfolio_values"]),
-            "sharpe": qs.stats.sharpe(metrics_df["returns"]),
+            "sharpe": qs.stats.sharpe(metrics_df["returns"], annualize=False),
         }
 
         if self._plot_graphs:
-            plt.plot(metrics_df["portfolio_values"], "r")
+            plt.plot(self._asset_memory["final"], "tab:blue")
             plt.title("Portfolio Value Over Time")
-            plt.xlabel("Time")
-            plt.ylabel("Portfolio value")
-            plt.savefig(self._results_file / "portfolio_value.png")
-            plt.close()
-
-            plt.plot(self._portfolio_reward_memory, "r")
-            plt.title("Reward Over Time")
-            plt.xlabel("Time")
-            plt.ylabel("Reward")
-            plt.savefig(self._results_file / "reward.png")
-            plt.close()
-
-            plt.plot(self._actions_memory)
-            plt.title("Actions performed")
-            plt.xlabel("Time")
-            plt.ylabel("Weight")
-            plt.savefig(self._results_file / "actions.png")
-            plt.close()
-
-            qs.plots.snapshot(
-                metrics_df["returns"],
-                show=False,
-                savefig=self._results_file / "portfolio_summary.png",
+            plt.xticks(
+                np.round(np.linspace(0, len(self._asset_memory["final"]) - 1, 10))
             )
+            plt.xlabel("Simulation Steps")
+            plt.ylabel("Portfolio Value")
+            plt.savefig(self._results_file / "portfolio_value_plot.png", bbox_inches="tight")
+            plt.close()
+
+            plt.plot(self._portfolio_reward_memory, "tab:blue")
+            plt.title("Reward Over Time")
+            plt.xticks(
+                np.round(np.linspace(0, len(self._portfolio_reward_memory) - 1, 10))
+            )
+            plt.xlabel("Simulation Steps")
+            plt.ylabel("Reward")
+            plt.tight_layout()
+            plt.savefig(self._results_file / "reward_plot.png", bbox_inches="tight")
+            plt.close()
+
+            actions = np.array(self._actions_memory)
+            df_actions = pd.DataFrame(
+                actions,
+                columns=np.append("Cash", self._tic_list),
+            )
+
+            legend_items = list(df_actions)
+            legend_items.reverse()
+
+            fig, ax = plt.subplots(figsize=(15, 6))
+            ax = df_actions.plot(
+                kind="bar",
+                ax=ax,
+                stacked=True,
+                title="Portfolio Distribution Over Time",
+                grid=False,
+                legend="reverse",
+                xticks=np.round(np.linspace(0, len(self._date_memory) - 1, 10)),
+                yticks=[],
+                xlabel="Simulation Step",
+                ylabel="Assets Distribution",
+                rot=0,
+                colormap="tab20",
+                width=1,
+                linewidth=0,
+            )
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(
+                handles[::-1],
+                labels[::-1],
+                title="Assets",
+                loc="center left",
+                bbox_to_anchor=(1.0, 0.5),
+            )
+            fig.savefig(self._results_file / "actions_plot.png", bbox_inches="tight")
+            plt.close()
+
+            # this plot cannot be done if index is not datetime
+            try:
+                qs.plots.snapshot(
+                    metrics_df["returns"],
+                    show=False,
+                    savefig=self._results_file / "portfolio_summary.png",
+                )
+            except:
+                pass
 
         if self._print_metrics:
             print("=================================")
@@ -506,7 +552,11 @@ class PortfolioOptimizationEnv(gym.Env):
                     qs.stats.max_drawdown(metrics_df["portfolio_values"])
                 )
             )
-            print("Sharpe ratio: {}".format(qs.stats.sharpe(metrics_df["returns"])))
+            print(
+                "Sharpe ratio: {}".format(
+                    qs.stats.sharpe(metrics_df["returns"], annualize=False)
+                )
+            )
             print("=================================")
 
     def _softmax_normalization(self, actions):
