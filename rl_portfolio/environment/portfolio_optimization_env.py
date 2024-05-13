@@ -477,7 +477,9 @@ class PortfolioOptimizationEnv(gym.Env):
             )
             plt.xlabel("Simulation Steps")
             plt.ylabel("Portfolio Value")
-            plt.savefig(self._results_file / "portfolio_value_plot.png", bbox_inches="tight")
+            plt.savefig(
+                self._results_file / "portfolio_value_plot.png", bbox_inches="tight"
+            )
             plt.close()
 
             plt.plot(self._portfolio_reward_memory, "tab:blue")
@@ -669,13 +671,13 @@ class PortfolioOptimizationEnv(gym.Env):
         self._price_variation = np.insert(self._price_variation, 0, 1)
 
         # define state to be returned
-        state = None
-        for tic in self._tic_list:
-            tic_data = self._data[self._data[self._tic_column] == tic]
-            tic_data = tic_data[self._features].to_numpy().T
-            tic_data = tic_data[..., np.newaxis]
-            state = tic_data if state is None else np.append(state, tic_data, axis=2)
-        state = state.transpose((0, 2, 1))
+        state = (
+            self._data.set_index([self._time_column, self._tic_column])
+            .unstack(-1)
+            .to_numpy()
+            .reshape(self._time_window, len(self._features), len(self._tic_list))
+            .transpose(1, 2, 0)
+        )
         info = {
             "tics": self._tic_list,
             "start_time": start_time,
