@@ -1,6 +1,11 @@
 from collections import deque
 
 class SequentialReplayBuffer:
+    """This replay buffer saves the experiences of an RL agent in a deque
+    (when buffer's capacity is full, it pops old experiences). When sampling
+    from the buffer, all the experiences will be returned in order and the 
+    buffer will be cleared.
+    """
     def __init__(self, capacity):
         """Initializes replay buffer.
 
