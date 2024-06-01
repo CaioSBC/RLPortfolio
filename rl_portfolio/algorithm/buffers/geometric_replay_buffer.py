@@ -34,11 +34,11 @@ class GeometricReplayBuffer:
         """
         self.buffer.append(experience)
 
-    def sample(self, seq_size, sample_bias=1.0, from_start=False):
+    def sample(self, batch_size, sample_bias=1.0, from_start=False):
         """REWRITE!!!!
 
         Args:
-            seq_size: Size of the sequence to be sampled.
+            batch_size: Size of the sequential batch to be sampled.
             sample_bias: Probability of success of a trial in a geometric
                 distribution.
             from_start: If True, will choose a sequence starting from the 
@@ -47,14 +47,14 @@ class GeometricReplayBuffer:
         Returns:
           Sample of batch_size size.
         """
-        max_index = len(self.buffer) - seq_size
+        max_index = len(self.buffer) - batch_size
         # NOTE: we subtract 1 so that rand can be 0 or the first/last
         # possible indexes will be ignored.
         rand = np.random.geometric(sample_bias) - 1
         while rand > max_index:
             rand = np.random.geometric(sample_bias) - 1
         if from_start:
-            buffer = list(islice(self.buffer, rand, rand + seq_size))
+            buffer = list(islice(self.buffer, rand, rand + batch_size))
         else:
-            buffer = list(islice(self.buffer, max_index - rand, max_index - rand + seq_size))
+            buffer = list(islice(self.buffer, max_index - rand, max_index - rand + batch_size))
         return buffer
