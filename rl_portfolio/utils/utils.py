@@ -8,19 +8,32 @@ from random import random
 
 from torch.utils.data.dataset import IterableDataset
 
+from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
+from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
+
 
 class RLDataset(IterableDataset):
-    def __init__(self, buffer):
+    def __init__(self, buffer, batch_size, sample_bias=1.0, from_start=False):
         """Initializes reinforcement learning dataset.
 
         Args:
             buffer: replay buffer to become iterable dataset.
+            batch_size: Sample batch size. Not used if buffer is
+                SequentialReplayBuffer.
+            sample_bias: Probability of success of a trial in a geometric
+                distribution. Only used if buffer is GeometricReplayBuffer.
+            from_start: If True, will choose a sequence starting from the
+                start of the buffer. Otherwise, it will start from the end.
+                Only used if buffer is GeometricReplayBuffer.
 
         Note:
             It's a subclass of pytorch's IterableDataset,
             check https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset
         """
         self.buffer = buffer
+        self.batch_size = batch_size
+        self.sample_bias = 1.0
+        self.from_start = from_start
 
     def __iter__(self):
         """Iterates over RLDataset.
@@ -28,7 +41,14 @@ class RLDataset(IterableDataset):
         Returns:
           Every experience of a sample from replay buffer.
         """
-        yield from self.buffer.sample()
+        if isinstance(self.buffer, SequentialReplayBuffer):
+            yield from self.buffer.sample()
+        elif isinstance(self.buffer, GeometricReplayBuffer):
+            yield from self.buffer.sample(
+                self.batch_size, self.sample_bias, self.from_start
+            )
+        else:
+            yield from self.buffer.sample(self.batch_size)
 
 
 def apply_portfolio_noise(portfolio, epsilon=0.0):
@@ -54,10 +74,11 @@ def apply_portfolio_noise(portfolio, epsilon=0.0):
         new_portfolio[target_index] += difference
     return new_portfolio
 
+
 @torch.no_grad
 def apply_parameter_noise(model, mean=0.0, std=0.0, device="cpu"):
-    """Apply gaussian/normal noise to neural network. 
-    
+    """Apply gaussian/normal noise to neural network.
+
     Arg:
         model: PyTorch model to add parameter noise.
         mean: Mean of gaussian/normal distribution.

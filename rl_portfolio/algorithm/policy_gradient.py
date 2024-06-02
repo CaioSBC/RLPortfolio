@@ -12,6 +12,7 @@ from tqdm import tqdm
 from rl_portfolio.architecture import EIIE
 from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
+from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
 from rl_portfolio.utils import apply_portfolio_noise
 from rl_portfolio.utils import apply_parameter_noise
 from rl_portfolio.utils import RLDataset
@@ -39,7 +40,10 @@ class PolicyGradient:
         policy=EIIE,
         policy_kwargs=None,
         validation_env=None,
+        replay_buffer=GeometricReplayBuffer,
         batch_size=100,
+        sample_bias=1.0,
+        sample_from_start=False,
         lr=1e-3,
         action_noise=0,
         parameter_noise=0,
@@ -55,7 +59,14 @@ class PolicyGradient:
             policy: Policy architecture to be used.
             policy_kwargs: Arguments to be used in the policy network.
             validation_env: Validation environment.
+            replay_buffer: Class of replay buffer to be used to sample
+                experiences in training.
             batch_size: Batch size to train neural network.
+            sample_bias: Probability of success of a trial in a geometric
+                distribution. Only used if buffer is GeometricReplayBuffer.
+            sample_from_start: If True, will choose a sequence starting
+                from the start of the buffer. Otherwise, it will start from
+                the end. Only used if buffer is GeometricReplayBuffer.
             lr: policy Neural network learning rate.
             action_noise: Noise parameter (between 0 and 1) to be applied
                 during training.
@@ -72,9 +83,12 @@ class PolicyGradient:
         self.policy_kwargs = {} if policy_kwargs is None else policy_kwargs
         self.validation_env = validation_env
         self.batch_size = batch_size
+        self.sample_bias = sample_bias
+        self.sample_from_start = sample_from_start
         self.lr = lr
         self.action_noise = action_noise
         self.parameter_noise = parameter_noise
+        self.replay_buffer = replay_buffer
         self.optimizer = optimizer
 
         self.summary_writer = None
@@ -100,36 +114,34 @@ class PolicyGradient:
         else:
             self.policy_kwargs["device"] = self.device
 
-        self._setup_train(env, self.policy, self.batch_size, self.lr, self.optimizer)
+        self._setup_train(env)
 
-    def _setup_train(self, env, policy, batch_size, lr, optimizer):
+    def _setup_train(self, env):
         """Initializes algorithm before training.
 
         Args:
-          env: environment.
-          policy: Policy architecture to be used.
-          batch_size: Batch size to train neural network.
-          lr: Policy neural network learning rate.
-          optimizer: Optimizer of neural network.
+          env: environment to be used in training.
         """
         # environment
         self.train_env = env
 
         # neural networks
-        self.train_policy = policy(**self.policy_kwargs).to(self.device)
-        self.train_optimizer = optimizer(self.train_policy.parameters(), lr=lr)
-
-        # replay buffer and portfolio vector memory
-        self.train_batch_size = batch_size
-        self.train_buffer = SequentialReplayBuffer(capacity=batch_size)
-        self.train_pvm = PortfolioVectorMemory(
-            self.train_env.episode_length, env.portfolio_size
+        self.train_policy = self.policy(**self.policy_kwargs).to(self.device)
+        self.train_optimizer = self.optimizer(
+            self.train_policy.parameters(), lr=self.lr
         )
 
+        # replay buffer and portfolio vector memory
+        self.train_batch_size = self.batch_size
+        self.train_buffer = self.replay_buffer(capacity=env.episode_length)
+        self.train_pvm = PortfolioVectorMemory(env.episode_length, env.portfolio_size)
+
         # dataset and dataloader
-        dataset = RLDataset(self.train_buffer)
+        dataset = RLDataset(
+            self.train_buffer, self.batch_size, self.sample_bias, self.sample_from_start
+        )
         self.train_dataloader = DataLoader(
-            dataset=dataset, batch_size=batch_size, shuffle=False, pin_memory=True
+            dataset=dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True
         )
 
     def train(self, episodes=100):
@@ -180,7 +192,7 @@ class PolicyGradient:
                     metrics.update(info["metrics"])
 
                 # update policy networks
-                if len(self.train_buffer) == self.train_batch_size:
+                if self._can_update_policy():
                     policy_loss = self._gradient_ascent()
 
                     # log policy loss
@@ -193,7 +205,8 @@ class PolicyGradient:
                 obs = next_obs
 
             # gradient ascent with episode remaining buffer data
-            policy_loss = self._gradient_ascent()
+            if self._can_update_policy(end_of_episode=True):
+                policy_loss = self._gradient_ascent()
 
             # log policy loss
             gradient_step += 1
@@ -219,21 +232,42 @@ class PolicyGradient:
             if self.validation_env:
                 self.test(self.validation_env, log_index=i)
 
-    def _setup_test(self, env, policy, batch_size, lr, optimizer):
+    def _setup_test(
+        self,
+        env,
+        policy,
+        replay_buffer,
+        batch_size,
+        sample_bias,
+        sample_from_start,
+        lr,
+        optimizer,
+    ):
         """Initializes algorithm before testing.
 
         Args:
-          env: Environment.
-          policy: Policy architecture to be used.
-          batch_size: batch size to train neural network.
-          lr: policy neural network learning rate.
-          optimizer: Optimizer of neural network.
+            env: Environment.
+            policy: Policy architecture to be used.
+            replay_buffer: Class of replay buffer to be used.
+            batch_size: Batch size to train neural network.
+            sample_bias: Probability of success of a trial in a geometric distribution.
+                Only used if buffer is GeometricReplayBuffer.
+            sample_from_start: If True, will choose a sequence starting from the start
+                of the buffer. Otherwise, it will start from the end. Only used if
+                buffer is GeometricReplayBuffer.
+            lr: Policy neural network learning rate.
+            optimizer: Optimizer of neural network.
         """
         # environment
         self.test_env = env
 
         # process None arguments
         policy = self.train_policy if policy is None else policy
+        replay_buffer = self.replay_buffer if replay_buffer is None else replay_buffer
+        sample_bias = self.sample_bias if sample_bias is None else sample_bias
+        sample_from_start = (
+            self.sample_from_start if sample_from_start is None else sample_from_start
+        )
         lr = self.lr if lr is None else lr
         optimizer = self.optimizer if optimizer is None else optimizer
 
@@ -242,13 +276,16 @@ class PolicyGradient:
         self.test_optimizer = optimizer(self.test_policy.parameters(), lr=lr)
 
         # replay buffer and portfolio vector memory
-        self.test_buffer = SequentialReplayBuffer(capacity=batch_size)
+        self.test_batch_size = (
+            self.train_batch_size if batch_size is None else batch_size
+        )
+        self.test_buffer = replay_buffer(capacity=batch_size)
         self.test_pvm = PortfolioVectorMemory(
-            self.test_env.episode_length, env.portfolio_size
+            env.episode_length, env.portfolio_size
         )
 
         # dataset and dataloader
-        dataset = RLDataset(self.test_buffer)
+        dataset = RLDataset(self.test_buffer, self.test_batch_size, sample_bias, sample_from_start)
         self.test_dataloader = DataLoader(
             dataset=dataset, batch_size=batch_size, shuffle=False, pin_memory=True
         )
@@ -257,7 +294,10 @@ class PolicyGradient:
         self,
         env,
         policy=None,
-        online_training_period=10,
+        replay_buffer=None,
+        batch_size=10,
+        sample_bias=None,
+        sample_from_start=None,
         lr=None,
         optimizer=None,
         log_index=0,
@@ -268,10 +308,17 @@ class PolicyGradient:
             env: Environment to be used in testing.
             policy: Policy architecture to be used. If None, it will use the training
                 architecture.
-            online_training_period: Period in which an online training will occur. To
-                disable online learning, use a very big value.
+            replay_buffer: Class of replay buffer to be used. If None, it will use the
+                training replay buffer.
             batch_size: Batch size to train neural network. If None, it will use the
                 training batch size.
+            sample_bias: Probability of success of a trial in a geometric distribution.
+                Only used if buffer is GeometricReplayBuffer. If None, it will use the
+                training sample bias.
+            sample_from_start: If True, will choose a sequence starting from the start
+                of the buffer. Otherwise, it will start from the end. Only used if
+                buffer is GeometricReplayBuffer. If None, it will use the training
+                sample_from_start.
             lr: Policy neural network learning rate. If None, it will use the training
                 learning rate.
             optimizer: Optimizer of neural network. If None, it will use the training
@@ -279,10 +326,18 @@ class PolicyGradient:
             log_index: Index to be used to log metrics.
 
         Note:
-            To disable online learning, set learning rate to 0 or a very big online
-            training period.
+            To disable online learning, set learning rate to 0 or a very big batch size.
         """
-        self._setup_test(env, policy, online_training_period, lr, optimizer)
+        self._setup_test(
+            env,
+            policy,
+            replay_buffer,
+            batch_size,
+            sample_bias,
+            sample_from_start,
+            lr,
+            optimizer,
+        )
 
         obs, info = self.test_env.reset()  # observation
         self.test_pvm.reset()  # reset portfolio vector memory
@@ -314,7 +369,7 @@ class PolicyGradient:
                 metrics.update(info["metrics"])
 
             # update policy networks
-            if steps % online_training_period == 0:
+            if self._can_update_policy(test=True):
                 self._gradient_ascent(test=True)
 
             obs = next_obs
@@ -375,3 +430,16 @@ class PolicyGradient:
             self.train_optimizer.step()
 
         return -policy_loss
+
+    def _can_update_policy(self, test=False, end_of_episode=False):
+        buffer = self.test_buffer if test else self.train_buffer
+        batch_size = self.test_batch_size if test else self.train_batch_size
+        if (
+            isinstance(buffer, SequentialReplayBuffer)
+            and end_of_episode
+            and len(buffer) > 0
+        ):
+            return True
+        if len(buffer) >= batch_size and not end_of_episode:
+            return True
+        return False
