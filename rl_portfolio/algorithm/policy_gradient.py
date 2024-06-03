@@ -155,6 +155,7 @@ class PolicyGradient:
         for i in tqdm(range(1, episodes + 1)):
             obs, info = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
+            self.train_buffer.reset() # reset replay buffer
             done = False
             metrics = {"rewards": []}
 
@@ -208,10 +209,12 @@ class PolicyGradient:
             if self._can_update_policy(end_of_episode=True):
                 policy_loss = self._gradient_ascent()
 
-            # log policy loss
-            gradient_step += 1
-            if self.summary_writer:
-                self.summary_writer.add_scalar("Loss/Train", policy_loss, gradient_step)
+                # log policy loss
+                gradient_step += 1
+                if self.summary_writer:
+                    self.summary_writer.add_scalar(
+                        "Loss/Train", policy_loss, gradient_step
+                    )
 
             # log training metrics
             if self.summary_writer:
@@ -280,12 +283,12 @@ class PolicyGradient:
             self.train_batch_size if batch_size is None else batch_size
         )
         self.test_buffer = replay_buffer(capacity=batch_size)
-        self.test_pvm = PortfolioVectorMemory(
-            env.episode_length, env.portfolio_size
-        )
+        self.test_pvm = PortfolioVectorMemory(env.episode_length, env.portfolio_size)
 
         # dataset and dataloader
-        dataset = RLDataset(self.test_buffer, self.test_batch_size, sample_bias, sample_from_start)
+        dataset = RLDataset(
+            self.test_buffer, self.test_batch_size, sample_bias, sample_from_start
+        )
         self.test_dataloader = DataLoader(
             dataset=dataset, batch_size=batch_size, shuffle=False, pin_memory=True
         )
@@ -432,6 +435,16 @@ class PolicyGradient:
         return -policy_loss
 
     def _can_update_policy(self, test=False, end_of_episode=False):
+        """Check if the conditions that allow a policy update are met.
+
+        Args:
+            test: If True, it uses the test parameters.
+            end_of_episode: If True, it checks the conditions of the last
+                update of an episode.
+
+        Returns:
+            True if policy update can happen.
+        """
         buffer = self.test_buffer if test else self.train_buffer
         batch_size = self.test_batch_size if test else self.train_batch_size
         if (
