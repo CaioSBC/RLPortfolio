@@ -92,3 +92,35 @@ def apply_parameter_noise(model, mean=0.0, std=0.0, device="cpu"):
     for param in noise_model.parameters():
         param += torch.normal(mean, std, size=param.shape).to(device)
     return noise_model
+
+def torch_to_numpy(tensor, squeeze=False):
+    """Transforms torch tensor to numpy array.
+
+    Arg:
+        tensor: Tensor to be transformed.
+        squeeze: If True, numpy array will be squeezed, eliminating
+            dimensions of size 1.
+
+    Returns:
+        Numpy array.
+    """
+    array = tensor.cpu().detach().numpy()
+    if squeeze:
+        array = array.squeeze()
+    return array
+
+def numpy_to_torch(array, type=torch.float32, add_batch_dim=False, device="cpu"):
+    """Transforms numpy array to torch tensor.
+
+    Arg:
+        array: Numpy array to be transformed.
+        type: Type of torch tensor.
+        device: Torch tensor device.
+
+    Returns:
+        Torch tensor.
+    """
+    tensor = torch.from_numpy(array).to(type).to(device)
+    if add_batch_dim:
+        tensor = tensor.unsqueeze(dim=0)
+    return tensor

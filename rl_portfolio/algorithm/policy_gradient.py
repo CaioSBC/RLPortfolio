@@ -15,6 +15,8 @@ from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
 from rl_portfolio.utils import apply_portfolio_noise
 from rl_portfolio.utils import apply_parameter_noise
+from rl_portfolio.utils import torch_to_numpy
+from rl_portfolio.utils import numpy_to_torch
 from rl_portfolio.utils import RLDataset
 
 
@@ -155,15 +157,17 @@ class PolicyGradient:
         for i in tqdm(range(1, episodes + 1)):
             obs, info = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
-            self.train_buffer.reset() # reset replay buffer
+            self.train_buffer.reset()  # reset replay buffer
             done = False
             metrics = {"rewards": []}
 
             while not done:
-                # define last_action and action
+                # define policy input tensors
                 last_action = self.train_pvm.retrieve()
-                obs_batch = np.expand_dims(obs, axis=0)
-                last_action_batch = np.expand_dims(last_action, axis=0)
+                obs_batch = numpy_to_torch(obs, add_batch_dim=True, device=self.device)
+                last_action_batch = numpy_to_torch(
+                    last_action, add_batch_dim=True, device=self.device
+                )
 
                 # generate a train policy with noisy parameters
                 noisy_train_policy = apply_parameter_noise(
@@ -172,7 +176,11 @@ class PolicyGradient:
 
                 # apply noise to action output
                 action = apply_portfolio_noise(
-                    noisy_train_policy(obs_batch, last_action_batch), self.action_noise
+                    torch_to_numpy(
+                        noisy_train_policy.mu(obs_batch, last_action_batch),
+                        squeeze=True,
+                    ),
+                    self.action_noise,
                 )
 
                 # update portfolio vector memory
@@ -352,9 +360,13 @@ class PolicyGradient:
             steps += 1
             # define last_action and action and update portfolio vector memory
             last_action = self.test_pvm.retrieve()
-            obs_batch = np.expand_dims(obs, axis=0)
-            last_action_batch = np.expand_dims(last_action, axis=0)
-            action = self.test_policy(obs_batch, last_action_batch)
+            obs_batch = numpy_to_torch(obs, add_batch_dim=True, device=self.device)
+            last_action_batch = numpy_to_torch(
+                last_action, add_batch_dim=True, device=self.device
+            )
+            action = torch_to_numpy(
+                self.test_policy.mu(obs_batch, last_action_batch), squeeze=True
+            )
             self.test_pvm.add(action)
 
             # run simulation step
