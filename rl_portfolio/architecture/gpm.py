@@ -7,6 +7,7 @@ from torch_geometric.nn import RGCNConv
 from torch_geometric.nn import Sequential
 from torch_geometric.utils import to_dense_batch
 
+
 class GPM(nn.Module):
     def __init__(
         self,
