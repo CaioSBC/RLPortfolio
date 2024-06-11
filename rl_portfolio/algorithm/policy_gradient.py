@@ -177,7 +177,7 @@ class PolicyGradient:
                 # apply noise to action output
                 action = apply_portfolio_noise(
                     torch_to_numpy(
-                        noisy_train_policy.mu(obs_batch, last_action_batch),
+                        noisy_train_policy(obs_batch, last_action_batch),
                         squeeze=True,
                     ),
                     self.action_noise,
@@ -365,7 +365,7 @@ class PolicyGradient:
                 last_action, add_batch_dim=True, device=self.device
             )
             action = torch_to_numpy(
-                self.test_policy.mu(obs_batch, last_action_batch), squeeze=True
+                self.test_policy(obs_batch, last_action_batch), squeeze=True
             )
             self.test_pvm.add(action)
 
@@ -426,9 +426,9 @@ class PolicyGradient:
 
         # define policy loss (negative for gradient ascent)
         mu = (
-            self.test_policy.mu(obs, last_actions)
+            self.test_policy(obs, last_actions)
             if test
-            else self.train_policy.mu(obs, last_actions)
+            else self.train_policy(obs, last_actions)
         )
         policy_loss = -torch.mean(
             torch.log(torch.sum(mu * price_variations * trf_mu, dim=1))

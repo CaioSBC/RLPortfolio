@@ -37,41 +37,38 @@ class EIIE(nn.Module):
                 in_channels=initial_features,
                 out_channels=conv_mid_features,
                 kernel_size=(1, k_size),
+                device=self.device,
             ),
             nn.ReLU(),
             nn.Conv2d(
                 in_channels=conv_mid_features,
                 out_channels=conv_final_features,
                 kernel_size=(1, n_size),
+                device=self.device,
             ),
             nn.ReLU(),
         )
 
         self.final_convolution = nn.Conv2d(
-            in_channels=conv_final_features + 1, out_channels=1, kernel_size=(1, 1)
+            in_channels=conv_final_features + 1,
+            out_channels=1,
+            kernel_size=(1, 1),
+            device=self.device,
         )
 
         self.softmax = nn.Sequential(nn.Softmax(dim=-1))
 
-    def mu(self, observation, last_action):
-        """Defines a most favorable action of this policy given input x.
+    def forward(self, observation, last_action):
+        """Policy network's forward propagation. Defines a most favorable
+        action of this policy given the inputs.
 
         Args:
-          observation: environment observation.
-          last_action: Last action performed by agent.
+            observation: environment observation.
+            last_action: Last action performed by agent.
 
         Returns:
-          Most favorable action.
+            Action to be taken.
         """
-
-        if isinstance(observation, np.ndarray):
-            observation = torch.from_numpy(observation)
-        observation = observation.to(self.device).float()
-
-        if isinstance(last_action, np.ndarray):
-            last_action = torch.from_numpy(last_action)
-        last_action = last_action.to(self.device).float()
-
         last_stocks, cash_bias = self._process_last_action(last_action)
         cash_bias = torch.zeros_like(cash_bias).to(self.device)
 
@@ -92,20 +89,6 @@ class EIIE(nn.Module):
         output = self.softmax(output)
 
         return output
-
-    def forward(self, observation, last_action):
-        """Policy network's forward propagation.
-
-        Args:
-          observation: Environment observation (dictionary).
-          last_action: Last action performed by the agent.
-
-        Returns:
-          Action to be taken (numpy array).
-        """
-        mu = self.mu(observation, last_action)
-        action = mu.cpu().detach().numpy().squeeze()
-        return action
 
     def _process_last_action(self, last_action):
         """Process the last action to retrieve cash bias and last stocks.
@@ -188,27 +171,17 @@ class EIIERecurrent(nn.Module):
 
         self.softmax = nn.Sequential(nn.Softmax(dim=-1))
 
-    def mu(self, observation, last_action):
-        """Defines a most favorable action of this policy given input x.
+    def forward(self, observation, last_action):
+        """Policy network's forward propagation. Defines a most favorable
+        action of this policy given the inputs.
 
         Args:
-          observation: environment observation.
-          last_action: Last action performed by agent.
+            observation: environment observation.
+            last_action: Last action performed by agent.
 
         Returns:
-          Most favorable action.
+            Action to be taken.
         """
-
-        if isinstance(observation, np.ndarray):
-            observation = torch.from_numpy(observation)
-        observation = observation.to(
-            self.device
-        ).float()  # shape [N, initial_features, num_assets, time_window]
-
-        if isinstance(last_action, np.ndarray):
-            last_action = torch.from_numpy(last_action)
-        last_action = last_action.to(self.device).float()
-
         last_stocks, cash_bias = self._process_last_action(last_action)
         cash_bias = torch.zeros_like(cash_bias).to(self.device)
 
@@ -250,20 +223,6 @@ class EIIERecurrent(nn.Module):
         output = self.softmax(output)
 
         return output
-
-    def forward(self, observation, last_action):
-        """Policy network's forward propagation.
-
-        Args:
-          observation: Environment observation (dictionary).
-          last_action: Last action performed by the agent.
-
-        Returns:
-          Action to be taken (numpy array).
-        """
-        mu = self.mu(observation, last_action)
-        action = mu.cpu().detach().numpy().squeeze()
-        return action
 
     def _process_last_action(self, last_action):
         """Process the last action to retrieve cash bias and last stocks.
