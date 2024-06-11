@@ -425,13 +425,18 @@ class PolicyGradient:
         trf_mu = trf_mu.unsqueeze(1).to(self.device)
 
         # define policy loss (negative for gradient ascent)
-        mu = (
+        actions = (
             self.test_policy(obs, last_actions)
             if test
             else self.train_policy(obs, last_actions)
         )
+        with torch.no_grad():
+            trf_mu = 1 - 0.0025 * torch.sum(
+                torch.abs(actions[:, 1:] - last_actions[:, 1:]), dim=1, keepdim=True
+            )
+
         policy_loss = -torch.mean(
-            torch.log(torch.sum(mu * price_variations * trf_mu, dim=1))
+            torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
         )
 
         # update policy network
