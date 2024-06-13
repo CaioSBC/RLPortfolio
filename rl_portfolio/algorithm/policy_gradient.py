@@ -13,8 +13,6 @@ from rl_portfolio.architecture import EIIE
 from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
-from rl_portfolio.utils import apply_portfolio_noise
-from rl_portfolio.utils import apply_parameter_noise
 from rl_portfolio.utils import torch_to_numpy
 from rl_portfolio.utils import numpy_to_torch
 from rl_portfolio.utils import RLDataset
@@ -169,18 +167,9 @@ class PolicyGradient:
                     last_action, add_batch_dim=True, device=self.device
                 )
 
-                # generate a train policy with noisy parameters
-                noisy_train_policy = apply_parameter_noise(
-                    self.train_policy, 0, self.parameter_noise, self.device
-                )
-
-                # apply noise to action output
-                action = apply_portfolio_noise(
-                    torch_to_numpy(
-                        noisy_train_policy(obs_batch, last_action_batch),
-                        squeeze=True,
-                    ),
-                    self.action_noise,
+                # define action
+                action = torch_to_numpy(
+                    self.train_policy(obs_batch, last_action_batch), squeeze=True
                 )
 
                 # update portfolio vector memory
@@ -430,8 +419,13 @@ class PolicyGradient:
             if test
             else self.train_policy(obs, last_actions)
         )
+        comission_rate = (
+            self.test_env._comission_fee_pct
+            if test
+            else self.train_env._comission_fee_pct
+        )
         with torch.no_grad():
-            trf_mu = 1 - 0.0025 * torch.sum(
+            trf_mu = 1 - comission_rate * torch.sum(
                 torch.abs(actions[:, 1:] - last_actions[:, 1:]), dim=1, keepdim=True
             )
 
