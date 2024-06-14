@@ -3,9 +3,6 @@ from __future__ import annotations
 import copy
 import torch
 
-from random import randint
-from random import random
-
 from torch.utils.data.dataset import IterableDataset
 
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
@@ -51,28 +48,35 @@ class RLDataset(IterableDataset):
             yield from self.buffer.sample(self.batch_size)
 
 
-def apply_portfolio_noise(portfolio, epsilon=0.0):
+def apply_action_noise(actions, epsilon=0):
     """Apply noise to portfolio distribution considering its constraints.
 
     Arg:
-        portfolio: initial portfolio distribution.
-        epsilon: maximum rebalancing.
+        actions: Batch of agent actions.
+        epsilon: Noise parameter.
 
     Returns:
-        New portolio distribution with noise applied.
+        New batch of actions with applied noise.
     """
-    portfolio_size = portfolio.shape[0]
-    new_portfolio = portfolio.copy()
-    for i in range(portfolio_size):
-        target_index = randint(0, portfolio_size - 1)
-        difference = epsilon * random()
-        # check constrains
-        max_diff = min(new_portfolio[i], 1 - new_portfolio[target_index])
-        difference = min(difference, max_diff)
-        # apply difference
-        new_portfolio[i] -= difference
-        new_portfolio[target_index] += difference
-    return new_portfolio
+    # print("=======")
+    if epsilon > 0:
+        eps = 1e-7  # small value to avoid infinite numbers in log function
+        log_actions = torch.log(actions + eps)
+        # noise is calculated through a normal distribution with 0 mean and
+        # std equal to the max absolute logarithmic value. Epsilon is used
+        # to control the value of std.
+        with torch.no_grad():
+            noises = torch.normal(
+                0,
+                torch.max(torch.abs(log_actions), dim=1, keepdim=True)[0].expand_as(
+                    log_actions
+                )
+                * epsilon,
+            ).to(log_actions.device)
+        new_actions = torch.softmax(log_actions + noises, dim=1)
+        return new_actions
+    else:
+        return actions
 
 
 @torch.no_grad
@@ -93,6 +97,7 @@ def apply_parameter_noise(model, mean=0.0, std=0.0, device="cpu"):
         param += torch.normal(mean, std, size=param.shape).to(device)
     return noise_model
 
+
 def torch_to_numpy(tensor, squeeze=False):
     """Transforms torch tensor to numpy array.
 
@@ -108,6 +113,7 @@ def torch_to_numpy(tensor, squeeze=False):
     if squeeze:
         array = array.squeeze()
     return array
+
 
 def numpy_to_torch(array, type=torch.float32, add_batch_dim=False, device="cpu"):
     """Transforms numpy array to torch tensor.

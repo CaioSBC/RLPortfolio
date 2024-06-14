@@ -13,6 +13,7 @@ from rl_portfolio.architecture import EIIE
 from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
+from rl_portfolio.utils import apply_action_noise
 from rl_portfolio.utils import torch_to_numpy
 from rl_portfolio.utils import numpy_to_torch
 from rl_portfolio.utils import RLDataset
@@ -295,7 +296,7 @@ class PolicyGradient:
         env,
         policy=None,
         replay_buffer=None,
-        batch_size=10,
+        batch_size=None,
         sample_bias=None,
         sample_from_start=None,
         lr=None,
@@ -413,12 +414,16 @@ class PolicyGradient:
         price_variations = price_variations.to(self.device)
         trf_mu = trf_mu.unsqueeze(1).to(self.device)
 
-        # define policy loss (negative for gradient ascent)
+        # define agent's actions and apply noise.
         actions = (
             self.test_policy(obs, last_actions)
             if test
-            else self.train_policy(obs, last_actions)
+            else apply_action_noise(
+                self.train_policy(obs, last_actions), epsilon=self.action_noise
+            )
         )
+
+        # calculate comission rate and transaction remainder factor
         comission_rate = (
             self.test_env._comission_fee_pct
             if test
@@ -429,6 +434,7 @@ class PolicyGradient:
                 torch.abs(actions[:, 1:] - last_actions[:, 1:]), dim=1, keepdim=True
             )
 
+        # define policy loss (negative for gradient ascent)
         policy_loss = -torch.mean(
             torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
         )
