@@ -12,24 +12,26 @@ buffer = GeometricReplayBuffer(capacity=5)
 def test_buffer_properties():
     """Tests replay buffer initial features."""
     assert len(buffer) == 0
+    assert buffer.capacity == 5
+    assert buffer.index == 0
 
 
 def test_buffer_append():
     """Tests appending to replay buffer."""
+    expected_buffer = []
     for i in range(20):
         buffer.append(i)
 
         assert len(buffer) == min(i + 1, 5)
 
-        expected_buffer = []
         if i < 5:
-            for j in range(i + 1):
-                expected_buffer.append(j)
+            expected_buffer.append(i)
         else:
-            for j in range(5):
-                expected_buffer.append(i - (4 - j))
+            index = i % 5
+            expected_buffer[index] = i
 
         assert list(buffer.buffer) == expected_buffer
+    print(expected_buffer)
 
 
 def test_buffer_sample():

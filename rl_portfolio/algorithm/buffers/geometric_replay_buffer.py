@@ -1,8 +1,5 @@
 import numpy as np
 
-from collections import deque
-from itertools import islice
-
 
 class GeometricReplayBuffer:
     """This replay buffer saves the experiences of an RL agent in a deque
@@ -15,27 +12,31 @@ class GeometricReplayBuffer:
         """Initializes geometric replay buffer.
 
         Args:
-          capacity: Max capacity of buffer.
+            capacity: Max capacity of buffer.
         """
         self.capacity = capacity
-        self.buffer = deque(maxlen=capacity)
+        self.reset()
 
     def __len__(self):
         """Represents the size of the buffer.
 
         Returns:
-          Size of the buffer.
+            Size of the buffer.
         """
         return len(self.buffer)
 
     def append(self, experience):
-        """Append experience to buffer. When buffer is full, it pops an old
-        experience.
+        """Append experience to buffer. When buffer is full, it overwrites
+        experiences in the beginning.
 
         Args:
-          experience: experience to be saved.
+            experience: experience to be saved.
         """
-        self.buffer.append(experience)
+        if len(self.buffer) < self.capacity:
+            self.buffer.append(experience)
+        else:
+            self.buffer[self.index] = experience
+            self.index = 0 if self.index == self.capacity - 1 else self.index + 1
 
     def sample(self, batch_size, sample_bias=1.0, from_start=False):
         """REWRITE!!!!
@@ -48,7 +49,7 @@ class GeometricReplayBuffer:
                 start of the buffer. Otherwise, it will start from the end.
 
         Returns:
-          Sample of batch_size size.
+            Sample of batch_size size.
         """
         max_index = len(self.buffer) - batch_size
         # NOTE: we subtract 1 so that rand can be 0 or the first/last
@@ -57,12 +58,12 @@ class GeometricReplayBuffer:
         while rand > max_index:
             rand = np.random.geometric(sample_bias) - 1
         if from_start:
-            buffer = list(islice(self.buffer, rand, rand + batch_size))
+            buffer = self.buffer[rand : rand + batch_size]
         else:
-            buffer = list(
-                islice(self.buffer, max_index - rand, max_index - rand + batch_size)
-            )
+            buffer = self.buffer[max_index - rand : max_index - rand + batch_size]
         return buffer
 
     def reset(self):
-        self.buffer = deque(maxlen=self.capacity)
+        """Resets the replay buffer."""
+        self.buffer = []
+        self.index = 0
