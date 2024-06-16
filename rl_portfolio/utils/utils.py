@@ -29,7 +29,7 @@ class RLDataset(IterableDataset):
         """
         self.buffer = buffer
         self.batch_size = batch_size
-        self.sample_bias = 1.0
+        self.sample_bias = sample_bias
         self.from_start = from_start
 
     def __iter__(self):
