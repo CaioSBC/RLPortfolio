@@ -156,7 +156,6 @@ class PolicyGradient:
         for i in tqdm(range(1, episodes + 1)):
             obs, info = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
-            self.train_buffer.reset()  # reset replay buffer
             done = False
             metrics = {"rewards": []}
 
@@ -265,6 +264,7 @@ class PolicyGradient:
         # process None arguments
         policy = self.train_policy if policy is None else policy
         replay_buffer = self.replay_buffer if replay_buffer is None else replay_buffer
+        batch_size = self.batch_size if batch_size is None else batch_size
         sample_bias = self.sample_bias if sample_bias is None else sample_bias
         sample_from_start = (
             self.sample_from_start if sample_from_start is None else sample_from_start
@@ -277,10 +277,8 @@ class PolicyGradient:
         self.test_optimizer = optimizer(self.test_policy.parameters(), lr=lr)
 
         # replay buffer and portfolio vector memory
-        self.test_batch_size = (
-            self.train_batch_size if batch_size is None else batch_size
-        )
-        self.test_buffer = replay_buffer(capacity=batch_size)
+        self.test_batch_size = batch_size
+        self.test_buffer = replay_buffer(capacity=env.episode_length)
         self.test_pvm = PortfolioVectorMemory(env.episode_length, env.portfolio_size)
 
         # dataset and dataloader
