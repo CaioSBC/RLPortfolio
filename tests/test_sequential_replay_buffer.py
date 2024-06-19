@@ -17,7 +17,7 @@ def test_buffer_properties():
 def test_buffer_append():
     """Tests appending to replay buffer."""
     for i in range(20):
-        buffer.append(i)
+        buffer.add(i)
 
         assert len(buffer) == min(i + 1, 5)
 
