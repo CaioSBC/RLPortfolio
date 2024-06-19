@@ -25,8 +25,8 @@ class GeometricReplayBuffer:
         """
         return len(self.buffer)
 
-    def append(self, experience):
-        """Append experience to buffer. When buffer is full, it overwrites
+    def add(self, experience):
+        """Add experience to buffer. When buffer is full, it overwrites
         experiences in the beginning.
 
         Args:
@@ -35,8 +35,35 @@ class GeometricReplayBuffer:
         if len(self.buffer) < self.capacity:
             self.buffer.append(experience)
         else:
-            self.buffer[self.index] = experience
-            self.index = 0 if self.index == self.capacity - 1 else self.index + 1
+            self.buffer[self.position] = experience
+            self.position = (
+                0 if self.position == self.capacity - 1 else self.position + 1
+            )
+
+    def add_at(self, experience, position):
+        if isinstance(position, int):
+            self.buffer[position] = experience
+        if isinstance(position, list):
+            assert isinstance(experience, list), "Experiences must also be a list."
+            for exp, i in zip(experience, position):
+                self.buffer[i] = exp
+
+    def update_value(self, value, position, attr_or_index=None):
+        if isinstance(position, int):
+            if attr_or_index is None:
+                self.buffer[position] = value
+            else:
+                self.buffer[position][attr_or_index] = value
+        if isinstance(position, list):
+            assert isinstance(value, list), "New values must also be a list."
+            if attr_or_index is None:
+                for val, pos in zip(value, position):
+                    self.buffer[pos] = val
+            else:
+                for val, pos in zip(value[attr_or_index], position):
+                    item = list(self.buffer[pos])
+                    item[attr_or_index] = val
+                    self.buffer[pos] = tuple(item)
 
     def sample(self, batch_size, sample_bias=1.0, from_start=False):
         """REWRITE!!!!
@@ -51,19 +78,19 @@ class GeometricReplayBuffer:
         Returns:
             Sample of batch_size size.
         """
-        max_index = len(self.buffer) - batch_size
+        max_pos = len(self.buffer) - batch_size
         # NOTE: we subtract 1 so that rand can be 0 or the first/last
-        # possible indexes will be ignored.
+        # possible positions will be ignored.
         rand = np.random.geometric(sample_bias) - 1
-        while rand > max_index:
+        while rand > max_pos:
             rand = np.random.geometric(sample_bias) - 1
         if from_start:
             buffer = self.buffer[rand : rand + batch_size]
         else:
-            buffer = self.buffer[max_index - rand : max_index - rand + batch_size]
+            buffer = self.buffer[max_pos - rand : max_pos - rand + batch_size]
         return buffer
 
     def reset(self):
         """Resets the replay buffer."""
         self.buffer = []
-        self.index = 0
+        self.position = 0

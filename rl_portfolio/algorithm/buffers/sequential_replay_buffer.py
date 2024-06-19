@@ -25,14 +25,37 @@ class SequentialReplayBuffer:
         """
         return len(self.buffer)
 
-    def append(self, experience):
-        """Append experience to buffer. When buffer is full, it pops
+    def add(self, experience):
+        """Add experience to buffer. When buffer is full, it pops
            an old experience.
 
         Args:
           experience: experience to be saved.
         """
         self.buffer.append(experience)
+
+    def add_at(self, experience, index):
+        if isinstance(index, int):
+            self.buffer[index] = experience
+        if isinstance(index, list):
+            assert isinstance(experience, list), "Experiences must also be a list."
+            for exp, i in zip(experience, index):
+                self.buffer[i] = exp
+
+    def update_value(self, value, position, attr_or_index=None):
+        if isinstance(position, int):
+            if attr_or_index is None:
+                self.buffer[position] = value
+            else:
+                self.buffer[position][attr_or_index] = value
+        if isinstance(position, list):
+            assert isinstance(value, list), "New values must also be a list."
+            if attr_or_index is None:
+                for val, pos in zip(value, position):
+                    self.buffer[pos] = val
+            else:
+                for val, pos in zip(value[attr_or_index], position):
+                    self.buffer[pos][attr_or_index] = val
 
     def sample(self):
         """Sample from replay buffer. All data from replay buffer is

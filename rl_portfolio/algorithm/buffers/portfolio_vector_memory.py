@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class PortfolioVectorMemory:
     def __init__(self, capacity, portfolio_size):
         """Initializes portfolio vector memory.
@@ -26,3 +27,11 @@ class PortfolioVectorMemory:
 
     def add(self, action):
         self.memory[self.index] = action
+
+    def add_at(self, action, index):
+        if isinstance(index, int):
+            self.memory[index] = action
+        if isinstance(index, list):
+            assert isinstance(action, list), "Actions must also be in a list."
+            for act, i in zip(action, index):
+                self.memory[i] = act

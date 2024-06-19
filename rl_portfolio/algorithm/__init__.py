@@ -1,1 +1,2 @@
 from rl_portfolio.algorithm.policy_gradient import PolicyGradient
+from rl_portfolio.algorithm.original_policy_gradient import PGPortfolio
