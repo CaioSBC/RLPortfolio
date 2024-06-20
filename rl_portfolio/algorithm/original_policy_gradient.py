@@ -177,7 +177,7 @@ class PGPortfolio:
             # add experience to replay buffer
             exp = (obs, last_action, info["price_variation"], index)
             self.test_buffer.add(exp) if test else self.train_buffer.add(exp)
-            index += 0
+            index += 1
 
             # log rewards
             metrics["rewards"].append(reward)

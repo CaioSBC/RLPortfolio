@@ -60,7 +60,7 @@ class GeometricReplayBuffer:
                 for val, pos in zip(value, position):
                     self.buffer[pos] = val
             else:
-                for val, pos in zip(value[attr_or_index], position):
+                for val, pos in zip(value, position):
                     item = list(self.buffer[pos])
                     item[attr_or_index] = val
                     self.buffer[pos] = tuple(item)
