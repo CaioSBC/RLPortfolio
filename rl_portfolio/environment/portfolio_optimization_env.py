@@ -167,7 +167,7 @@ class PortfolioOptimizationEnv(gym.Env):
 
         # sort datetimes and define episode length
         self._sorted_times = sorted(set(self._df[time_column]))
-        self.episode_length = len(self._sorted_times) - time_window + 1
+        self.episode_length = len(self._sorted_times) - time_window
 
         # define action space
         self.action_space = gym.spaces.Box(low=0, high=1, shape=(action_space,))
@@ -332,6 +332,11 @@ class PortfolioOptimizationEnv(gym.Env):
             # Define portfolio return
             self._reward = portfolio_reward
             self._reward = self._reward * self._reward_scaling
+
+            # Since time index has changed, check if new state is terminal.
+            self._terminal = self._time_index >= len(self._sorted_times) - 1
+            if self._terminal:
+                self._terminal_routine()
 
         return self._observation, self._reward, self._terminal, False, self._info
 
