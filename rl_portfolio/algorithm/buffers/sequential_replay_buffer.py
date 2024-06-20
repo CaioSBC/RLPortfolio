@@ -54,8 +54,10 @@ class SequentialReplayBuffer:
                 for val, pos in zip(value, position):
                     self.buffer[pos] = val
             else:
-                for val, pos in zip(value[attr_or_index], position):
-                    self.buffer[pos][attr_or_index] = val
+                for val, pos in zip(value, position):
+                    item = list(self.buffer[pos])
+                    item[attr_or_index] = val
+                    self.buffer[pos] = tuple(item)
 
     def sample(self):
         """Sample from replay buffer. All data from replay buffer is
