@@ -30,7 +30,7 @@ class GeometricReplayBuffer:
         experiences in the beginning.
 
         Args:
-            experience: experience to be saved.
+            experience: Experience to be saved.
         """
         if len(self.buffer) < self.capacity:
             self.buffer.append(experience)
@@ -41,6 +41,16 @@ class GeometricReplayBuffer:
             )
 
     def update_value(self, value, position, attr_or_index=None):
+        """Updates the value of the item in a specific position of the
+        replay buffer.
+
+        Args:
+            value: New value to be added to the buffer.
+            position: Position of the item to be updated in the buffer.
+            attr_or_index: If the item in the buffer are data structures
+                like lists, tuples or dicts, this argument specifies which
+                data to update.
+        """
         if isinstance(position, int):
             if attr_or_index is None:
                 self.buffer[position] = value
@@ -66,7 +76,10 @@ class GeometricReplayBuffer:
                         self.buffer[pos][attr_or_index] = val
 
     def sample(self, batch_size, sample_bias=1.0, from_start=False):
-        """REWRITE!!!!
+        """Samples a sequence of specified size from the replay buffer. The
+        sampling method will select the first item of the sequence following
+        a geometric distribution, which, depending on the from_start argument,
+        will favor samples from the beginning or from the end of the buffer.
 
         Args:
             batch_size: Size of the sequential batch to be sampled.
