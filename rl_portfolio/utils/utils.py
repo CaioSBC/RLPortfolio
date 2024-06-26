@@ -6,7 +6,6 @@ import torch
 from torch.utils.data.dataset import IterableDataset
 
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
-from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 
 
 class RLDataset(IterableDataset):
@@ -38,9 +37,7 @@ class RLDataset(IterableDataset):
         Returns:
           Every experience of a sample from replay buffer.
         """
-        if isinstance(self.buffer, SequentialReplayBuffer):
-            yield from self.buffer.sample()
-        elif isinstance(self.buffer, GeometricReplayBuffer):
+        if isinstance(self.buffer, GeometricReplayBuffer):
             yield from self.buffer.sample(
                 self.batch_size, self.sample_bias, self.from_start
             )
