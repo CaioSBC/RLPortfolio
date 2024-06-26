@@ -40,20 +40,17 @@ class GeometricReplayBuffer:
                 0 if self.position == self.capacity - 1 else self.position + 1
             )
 
-    def add_at(self, experience, position):
-        if isinstance(position, int):
-            self.buffer[position] = experience
-        if isinstance(position, list):
-            assert isinstance(experience, list), "Experiences must also be a list."
-            for exp, i in zip(experience, position):
-                self.buffer[i] = exp
-
     def update_value(self, value, position, attr_or_index=None):
         if isinstance(position, int):
             if attr_or_index is None:
                 self.buffer[position] = value
             else:
-                self.buffer[position][attr_or_index] = value
+                if isinstance(self.buffer[position], tuple):
+                    item = list(self.buffer[position])
+                    item[attr_or_index] = value
+                    self.buffer[position] = tuple(item)
+                else:
+                    self.buffer[position][attr_or_index] = value
         if isinstance(position, list):
             assert isinstance(value, list), "New values must also be a list."
             if attr_or_index is None:
@@ -61,9 +58,12 @@ class GeometricReplayBuffer:
                     self.buffer[pos] = val
             else:
                 for val, pos in zip(value, position):
-                    item = list(self.buffer[pos])
-                    item[attr_or_index] = val
-                    self.buffer[pos] = tuple(item)
+                    if isinstance(self.buffer[pos], tuple):
+                        item = list(self.buffer[pos])
+                        item[attr_or_index] = val
+                        self.buffer[pos] = tuple(item)
+                    else:
+                        self.buffer[pos][attr_or_index] = val
 
     def sample(self, batch_size, sample_bias=1.0, from_start=False):
         """REWRITE!!!!

@@ -174,8 +174,7 @@ class PortfolioOptimizationEnv(gym.Env):
 
         # define observation space
         if self._return_last_action:
-            # if  last action must be returned, a dict observation
-            # is defined
+            # if  last action must be returned, a dict observation is defined
             self.observation_space = gym.spaces.Dict(
                 {
                     "state": gym.spaces.Box(
