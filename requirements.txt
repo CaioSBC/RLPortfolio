@@ -6,3 +6,4 @@ scikit-learn
 tensorboard
 torch
 torch_geometric
+tqdm
