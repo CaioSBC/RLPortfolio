@@ -144,7 +144,7 @@ portfolio_values = [1000]
 def test_environment_properties():
     """Tests the main properties of the environment."""
     assert environment.portfolio_size == 3
-    assert environment.episode_length == 3
+    assert environment.episode_length == 2
     assert environment.action_space.shape == (4,)
     assert environment.observation_space.shape == (2, 3, 3)
 
@@ -264,7 +264,7 @@ def test_environment_step_2():
     assert pytest.approx(reward) == pytest.approx(
         np.log(portfolio_values[-1] / portfolio_values[-2])
     )
-    assert terminal == False
+    assert terminal == True
     assert truncated == False
     assert info["tics"].tolist() == ["A", "B", "C"]
     assert info["start_time"] == datetime.strptime("2024-04-24", "%Y-%m-%d")
@@ -333,7 +333,7 @@ def test_environment_step_3():
 def test_environment_dict_properties():
     """Tests the main properties of the dict-observation environment."""
     assert environment_dict.portfolio_size == 3
-    assert environment_dict.episode_length == 3
+    assert environment_dict.episode_length == 2
     assert environment_dict.action_space.shape == (4,)
     assert environment_dict.observation_space["state"].shape == (2, 3, 3)
     assert environment_dict.observation_space["last_action"].shape == (4,)
