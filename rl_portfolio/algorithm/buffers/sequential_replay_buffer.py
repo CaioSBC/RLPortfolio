@@ -1,53 +1,66 @@
-from collections import deque
+import numpy as np
 
 
 class SequentialReplayBuffer:
-    """This replay buffer saves the experiences of an RL agent in a deque
-    (when buffer's capacity is full, it pops old experiences). When sampling
-    from the buffer, all the experiences will be returned in order and the
-    buffer will be cleared.
+    """This replay buffer saves the experiences of an RL agent in a list
+    (when buffer's capacity is full, it replaces values in the beginning
+    of the list). When sampling from the buffer, a sequence of consecutive
+    experiences will be randomly chosen.
     """
 
     def __init__(self, capacity):
-        """Initializes replay buffer.
+        """Initializes the replay buffer.
 
         Args:
-          capacity: Max capacity of buffer.
+            capacity: Max capacity of buffer.
         """
         self.capacity = capacity
-        self.buffer = deque(maxlen=capacity)
+        self.reset()
 
     def __len__(self):
-        """Represents the size of the buffer
+        """Represents the size of the buffer.
 
         Returns:
-          Size of the buffer.
+            Size of the buffer.
         """
         return len(self.buffer)
 
     def add(self, experience):
-        """Add experience to buffer. When buffer is full, it pops
-           an old experience.
+        """Add experience to buffer. When buffer is full, it overwrites
+        experiences in the beginning.
 
         Args:
-          experience: experience to be saved.
+            experience: Experience to be saved.
         """
-        self.buffer.append(experience)
-
-    def add_at(self, experience, index):
-        if isinstance(index, int):
-            self.buffer[index] = experience
-        if isinstance(index, list):
-            assert isinstance(experience, list), "Experiences must also be a list."
-            for exp, i in zip(experience, index):
-                self.buffer[i] = exp
+        if len(self.buffer) < self.capacity:
+            self.buffer.append(experience)
+        else:
+            self.buffer[self.position] = experience
+            self.position = (
+                0 if self.position == self.capacity - 1 else self.position + 1
+            )
 
     def update_value(self, value, position, attr_or_index=None):
+        """Updates the value of the item in a specific position of the
+        replay buffer.
+
+        Args:
+            value: New value to be added to the buffer.
+            position: Position of the item to be updated in the buffer.
+            attr_or_index: If the item in the buffer are data structures
+                like lists, tuples or dicts, this argument specifies which
+                data to update.
+        """
         if isinstance(position, int):
             if attr_or_index is None:
                 self.buffer[position] = value
             else:
-                self.buffer[position][attr_or_index] = value
+                if isinstance(self.buffer[position], tuple):
+                    item = list(self.buffer[position])
+                    item[attr_or_index] = value
+                    self.buffer[position] = tuple(item)
+                else:
+                    self.buffer[position][attr_or_index] = value
         if isinstance(position, list):
             assert isinstance(value, list), "New values must also be a list."
             if attr_or_index is None:
@@ -55,20 +68,26 @@ class SequentialReplayBuffer:
                     self.buffer[pos] = val
             else:
                 for val, pos in zip(value, position):
-                    item = list(self.buffer[pos])
-                    item[attr_or_index] = val
-                    self.buffer[pos] = tuple(item)
+                    if isinstance(self.buffer[pos], tuple):
+                        item = list(self.buffer[pos])
+                        item[attr_or_index] = val
+                        self.buffer[pos] = tuple(item)
+                    else:
+                        self.buffer[pos][attr_or_index] = val
 
-    def sample(self):
-        """Sample from replay buffer. All data from replay buffer is
-        returned and the buffer is cleared.
+    def sample(self, batch_size):
+        """Randomly samples a sequence of specified size from the replay buffer.
 
         Returns:
           Sample of batch_size size.
         """
-        buffer = list(self.buffer)
-        self.buffer.clear()
-        return buffer
+        max_pos = len(self.buffer) - batch_size
+        # NOTE: we sum 1 to include the maximum position as a valid choice
+        rand = np.random.randint(max_pos + 1)
+        sample = self.buffer[rand : rand + batch_size]
+        return sample
 
     def reset(self):
-        self.buffer = deque(maxlen=self.capacity)
+        """Resets the replay buffer."""
+        self.buffer = []
+        self.position = 0

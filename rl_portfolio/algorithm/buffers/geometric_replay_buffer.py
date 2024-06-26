@@ -1,79 +1,15 @@
 import numpy as np
 
+from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 
-class GeometricReplayBuffer:
-    """This replay buffer saves the experiences of an RL agent in a deque
-    (when buffer's capacity is full, it pops old experiences). When sampling
-    from the buffer, a sequence of experiences will be chosen by sampling a
-    geometric distribution that will favor more recent data.
+
+class GeometricReplayBuffer(SequentialReplayBuffer):
+    """This replay buffer saves the experiences of an RL agent in a list
+    (when buffer's capacity is full, it replaces values in the beginning
+    of the list). When sampling from the buffer, a sequence of consecutive
+    experiences will be chosen by sampling a geometric distribution that
+    will favor more recent data.
     """
-
-    def __init__(self, capacity):
-        """Initializes geometric replay buffer.
-
-        Args:
-            capacity: Max capacity of buffer.
-        """
-        self.capacity = capacity
-        self.reset()
-
-    def __len__(self):
-        """Represents the size of the buffer.
-
-        Returns:
-            Size of the buffer.
-        """
-        return len(self.buffer)
-
-    def add(self, experience):
-        """Add experience to buffer. When buffer is full, it overwrites
-        experiences in the beginning.
-
-        Args:
-            experience: Experience to be saved.
-        """
-        if len(self.buffer) < self.capacity:
-            self.buffer.append(experience)
-        else:
-            self.buffer[self.position] = experience
-            self.position = (
-                0 if self.position == self.capacity - 1 else self.position + 1
-            )
-
-    def update_value(self, value, position, attr_or_index=None):
-        """Updates the value of the item in a specific position of the
-        replay buffer.
-
-        Args:
-            value: New value to be added to the buffer.
-            position: Position of the item to be updated in the buffer.
-            attr_or_index: If the item in the buffer are data structures
-                like lists, tuples or dicts, this argument specifies which
-                data to update.
-        """
-        if isinstance(position, int):
-            if attr_or_index is None:
-                self.buffer[position] = value
-            else:
-                if isinstance(self.buffer[position], tuple):
-                    item = list(self.buffer[position])
-                    item[attr_or_index] = value
-                    self.buffer[position] = tuple(item)
-                else:
-                    self.buffer[position][attr_or_index] = value
-        if isinstance(position, list):
-            assert isinstance(value, list), "New values must also be a list."
-            if attr_or_index is None:
-                for val, pos in zip(value, position):
-                    self.buffer[pos] = val
-            else:
-                for val, pos in zip(value, position):
-                    if isinstance(self.buffer[pos], tuple):
-                        item = list(self.buffer[pos])
-                        item[attr_or_index] = val
-                        self.buffer[pos] = tuple(item)
-                    else:
-                        self.buffer[pos][attr_or_index] = val
 
     def sample(self, batch_size, sample_bias=1.0, from_start=False):
         """Samples a sequence of specified size from the replay buffer. The
@@ -98,12 +34,7 @@ class GeometricReplayBuffer:
         while rand > max_pos:
             rand = np.random.geometric(sample_bias) - 1
         if from_start:
-            buffer = self.buffer[rand : rand + batch_size]
+            sample = self.buffer[rand : rand + batch_size]
         else:
-            buffer = self.buffer[max_pos - rand : max_pos - rand + batch_size]
-        return buffer
-
-    def reset(self):
-        """Resets the replay buffer."""
-        self.buffer = []
-        self.position = 0
+            sample = self.buffer[max_pos - rand : max_pos - rand + batch_size]
+        return sample
