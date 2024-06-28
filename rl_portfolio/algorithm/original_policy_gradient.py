@@ -187,7 +187,6 @@ class PGPortfolio:
                 metrics.update(info["metrics"])
 
             # update policy networks
-
             if gradient_ascent and self._can_update_policy(test=test):
                 self._gradient_ascent(test=test, update_buffers=False)
 
@@ -477,6 +476,7 @@ class PGPortfolio:
                 action_size).
             indexes: Batch with the indices of the batch data used in
                 in the gradient ascent. Shape is (batch_size,).
+            test: If True, test buffers must be updated.
         """
         actions = list(torch_to_numpy(actions))
         buffer_indexes = (indexes + 1).tolist()

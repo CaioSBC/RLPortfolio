@@ -6,6 +6,7 @@ import torch
 from torch.utils.data.dataset import IterableDataset
 
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
+from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 
 
 class RLDataset(IterableDataset):
@@ -127,3 +128,60 @@ def numpy_to_torch(array, type=torch.float32, add_batch_dim=False, device="cpu")
     if add_batch_dim:
         tensor = tensor.unsqueeze(dim=0)
     return tensor
+
+
+def combine_replay_buffers(rb_list, new_type):
+    """Combines multiple replay buffers and creates a new one.
+
+    Args:
+        rb_list: List of replay buffers.
+        new_type: New replay buffer type. It can be SequentialReplayBuffer or
+            GeometricReplayBuffer.
+
+    Note:
+        After combining replay buffers, its position pointer will be reset to 0
+        so it is adviseable to avoid combining replay buffers if the integrity
+        of the position pointer is important to the algorithm.
+
+    Returns:
+        Combined replay buffer.
+    """
+    new_capacity = 0
+    new_buffer = []
+    for rb in rb_list:
+        new_capacity += rb.capacity
+        new_buffer += rb.buffer
+    new_rb = new_type(new_capacity)
+    new_rb.buffer = new_buffer
+    return new_rb
+
+
+def combine_portfolio_vector_memories(pvm_list, move_index=True):
+    """Combines two portfolio vector memories and creates a new one.
+
+    Args:
+        pvm_list: List of portfolio vector memories.
+        move_index: If True, moves the index pointer of the portfolio vector
+            memory to the end, so it appends new experiences.
+
+    Returns:
+        Combined portfolio vector memory.
+    """
+    new_capacity = 0
+    new_memory = []
+    new_index = 0
+    new_portfolio_size = 0
+    for i in range(len(pvm_list)):
+        if i > 0:
+            assert (
+                pvm_list[i].portfolio_size == new_portfolio_size
+            ), "Portfolio vector memories must have the same portfolio size."
+        else:
+            new_portfolio_size = pvm_list[i].portfolio_size
+        new_index = max(new_capacity, 0) if move_index else 0
+        new_capacity += pvm_list[i].capacity
+        new_memory += pvm_list[i].memory if i == 0 else pvm_list[i].memory[1:]
+    new_pvm = PortfolioVectorMemory(new_capacity, new_portfolio_size)
+    new_pvm.memory = new_memory
+    new_pvm.index = new_index
+    return new_pvm
