@@ -15,6 +15,7 @@ from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
 from rl_portfolio.utils import apply_action_noise
+from rl_portfolio.utils import combine_replay_buffers
 from rl_portfolio.utils import torch_to_numpy
 from rl_portfolio.utils import numpy_to_torch
 from rl_portfolio.utils import RLDataset
@@ -132,15 +133,20 @@ class PGPortfolio:
             dataset=dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True
         )
 
-    def _run_episode(self, test=False, gradient_ascent=False):
+    def _run_episode(self, test=False, gradient_steps=0, initial_index=0):
         """Runs a full episode (the agent rolls through all the environment's
         data).
 
         Args:
             test: If True, the episode is running during a test routine.
-            gradient_ascent: If True, the agent will perform a gradient ascent
-                after each simulation step (online learning).
+            gradient_steps: The number of gradient ascent operations the agent will
+                perform after each simulation step (online learning).
+            initial_index: Initial index value of the simulation step. It is used when
+                the replay buffer is pre-filled with experiences and its capacity is
+                bigger than the episode length.
 
+        Returns:
+            Dictionary with episode metrics.
         """
         if test:
             obs, info = self.test_env.reset()  # observation
@@ -150,7 +156,7 @@ class PGPortfolio:
             self.train_pvm.reset()  # reset portfolio vector memory
         done = False
         metrics = {"rewards": []}
-        index = 0
+        index = initial_index
         while not done:
             # define policy input tensors
             last_action = (
@@ -187,8 +193,9 @@ class PGPortfolio:
                 metrics.update(info["metrics"])
 
             # update policy networks
-            if gradient_ascent and self._can_update_policy(test=test):
-                self._gradient_ascent(test=test, update_buffers=False)
+            if gradient_steps > 0 and self._can_update_policy(test=test):
+                for i in range(gradient_steps):
+                    self._gradient_ascent(test=test)
 
             obs = next_obs
 
@@ -198,14 +205,16 @@ class PGPortfolio:
         self,
         steps=10000,
         logging_period=250,
-        validation_period=None,
-        validation_env=None,
-        validation_replay_buffer=None,
-        validation_batch_size=None,
-        validation_sample_bias=None,
-        validation_sample_from_start=None,
-        validation_lr=None,
-        validation_optimizer=None,
+        valid_period=None,
+        valid_env=None,
+        valid_gradient_steps=1,
+        valid_use_train_buffer=True,
+        valid_replay_buffer=None,
+        valid_batch_size=None,
+        valid_sample_bias=None,
+        valid_sample_from_start=None,
+        valid_lr=None,
+        valid_optimizer=None,
     ):
         """Training sequence.
 
@@ -213,29 +222,34 @@ class PGPortfolio:
             steps: Number of training steps.
             logging_period: Number of training steps to perform gradient ascent
                 before running a full episode and log the agent's metrics.
-            validation_period: Number of training steps to perform before running
-                a full episode in the validation environment and log metrics. If
-                None, no validation is done.
-            validation_env: Validation environment. If None, no validation is
-                performed.
-            validation_replay_buffer: Type of replay buffer to use in validation.
-                If None, it will be equal to the training replay buffer.
-            validation_batch_size: Batch size to use in validation. If None, the
-                training batch size is used.
-            validation_sample_bias: Sample bias to be used if replay buffer is
+            valid_period: Number of training steps to perform before running a full
+                episode in the validation environment and log metrics. If None, no 
+                validation is done.
+            valid_env: Validation environment. If None, no validation is performed.
+            valid_gradient_steps: Number of gradient ascent steps to perform after
+                each simulation step in the validation period.
+            valid_use_train_buffer: If True, the validation period also makes use of 
+                experiences in the training replay buffer to perform online training. 
+                Set this option to True if the validation period is immediately after
+                the training period.
+            valid_replay_buffer: Type of replay buffer to use in validation. If None, 
+                it will be equal to the training replay buffer.
+            valid_batch_size: Batch size to use in validation. If None, the training
+                batch size is used.
+            valid_sample_bias: Sample bias to be used if replay buffer is
                 GeometricReplayBuffer. If None, the training sample bias is used.
-            validation_sample_from_start: If True, the GeometricReplayBuffer will
-                perform geometric distribution sampling from the beginning of the
-                ordered experiences. If None, the training sample bias is used.
-            validation_lr: Learning rate to perform gradient ascent in validation.
-                If None, the training learning rate is used instead.
-            validation_optimizer: Type of optimizer to use in the validation. If
-                None, the same type used in training is set.
+            valid_sample_from_start: If True, the GeometricReplayBuffer will perform 
+                geometric distribution sampling from the beginning of the ordered 
+                experiences. If None, the training sample bias is used.
+            valid_lr: Learning rate to perform gradient ascent in validation. If None, 
+                the training learning rate is used instead.
+            valid_optimizer: Type of optimizer to use in the validation. If None, the 
+                same type used in training is set.
         """
         # If periods are None, loggings and validations will only happen at
         # the end of training.
         logging_period = steps if logging_period is None else logging_period
-        validation_period = steps if validation_period is None else validation_period
+        valid_period = steps if valid_period is None else valid_period
 
         # run the episode to fill the buffers
         self._run_episode()
@@ -256,21 +270,25 @@ class PGPortfolio:
                     )
 
                 # validation step
-                if validation_env and step % validation_period == 0:
+                if valid_env and step % valid_period == 0:
                     self.test(
-                        validation_env,
-                        validation_replay_buffer,
-                        validation_batch_size,
-                        validation_sample_bias,
-                        validation_sample_from_start,
-                        validation_lr,
-                        validation_optimizer,
-                        plot_index=int(step / validation_period),
+                        valid_env,
+                        gradient_steps=valid_gradient_steps,
+                        use_train_buffer=valid_use_train_buffer,
+                        policy=None,
+                        replay_buffer=valid_replay_buffer,
+                        batch_size=valid_batch_size,
+                        sample_bias=valid_sample_bias,
+                        sample_from_start=valid_sample_from_start,
+                        lr=valid_lr,
+                        optimizer=valid_optimizer,
+                        plot_index=int(step / valid_period),
                     )
 
     def _setup_test(
         self,
         env,
+        use_train_buffer,
         policy,
         replay_buffer,
         batch_size,
@@ -283,6 +301,9 @@ class PGPortfolio:
 
         Args:
             env: Environment.
+            use_train_buffer: If True, the test period also makes use of experiences in
+                the training replay buffer to perform online training. Set this option
+                to True if the test period is immediately after the training period.
             policy: Policy architecture to be used.
             replay_buffer: Class of replay buffer to be used.
             batch_size: Batch size to train neural network.
@@ -315,6 +336,10 @@ class PGPortfolio:
         # replay buffer and portfolio vector memory
         self.test_batch_size = batch_size
         self.test_buffer = replay_buffer(capacity=env.episode_length)
+        if use_train_buffer:
+            self.test_buffer = combine_replay_buffers(
+                [self.train_buffer, self.test_buffer], replay_buffer
+            )
         self.test_pvm = PortfolioVectorMemory(env.episode_length, env.portfolio_size)
 
         # dataset and dataloader
@@ -328,6 +353,8 @@ class PGPortfolio:
     def test(
         self,
         env,
+        gradient_steps=1,
+        use_train_buffer=False,
         policy=None,
         replay_buffer=None,
         batch_size=None,
@@ -341,6 +368,11 @@ class PGPortfolio:
 
         Args:
             env: Environment to be used in testing.
+            gradient_steps: Number of gradient ascent steps to perform after each
+                simulation step.
+            use_train_buffer: If True, the test period also makes use of experiences in
+                the training replay buffer to perform online training. Set this option
+                to True if the test period is immediately after the training period.
             policy: Policy architecture to be used. If None, it will use the training
                 architecture.
             replay_buffer: Class of replay buffer to be used. If None, it will use the
@@ -366,6 +398,7 @@ class PGPortfolio:
         """
         self._setup_test(
             env,
+            use_train_buffer,
             policy,
             replay_buffer,
             batch_size,
@@ -376,19 +409,24 @@ class PGPortfolio:
         )
 
         # run episode performing gradient ascent after each simulation step (online learning)
-        metrics = self._run_episode(test=True, gradient_ascent=True)
+        initial_index = self.train_buffer.capacity if use_train_buffer else 0
+        metrics = self._run_episode(
+            test=True, gradient_steps=gradient_steps, initial_index=initial_index
+        )
 
         # log test metrics
         if plot_index is not None:
             self._plot_metrics(metrics, plot_index, test=True)
 
-    def _gradient_ascent(self, test=False, update_buffers=True):
+    def _gradient_ascent(self, test=False, update_rb=True, update_pvm=False):
         """Performs the gradient ascent step in the policy gradient algorithm.
 
         Args:
             test: If true, it uses the test dataloader and policy.
-            update_buffers: If True, portfolio vector memory and replay buffers
-                will be updated.
+            update_rb: If True, replay buffers will be updated after gradient
+                ascent.
+            update_pvm: If True, portfolio vector memories will be updated
+                after gradient ascent.
 
         Returns:
             Negative of policy loss (since it's gradient ascent).
@@ -439,8 +477,7 @@ class PGPortfolio:
             self.train_optimizer.step()
 
         # actions can be updated in the buffers and memories
-        if update_buffers:
-            self._update_buffers(actions, indexes, test)
+        self._update_buffers(actions, indexes, test, update_rb, update_pvm)
 
         return -policy_loss
 
@@ -467,7 +504,7 @@ class PGPortfolio:
             return True
         return False
 
-    def _update_buffers(self, actions, indexes, test):
+    def _update_buffers(self, actions, indexes, test, update_rb=True, update_pvm=False):
         """Updates the portfolio vector memory and the replay buffers
         considering the actions taken during gradient ascent.
 
@@ -477,27 +514,36 @@ class PGPortfolio:
             indexes: Batch with the indices of the batch data used in
                 in the gradient ascent. Shape is (batch_size,).
             test: If True, test buffers must be updated.
+            update_rb: If True, updates replay buffers.
+            update_pvm: If True, updates portfolio vector memories.
         """
+        if not update_rb and not update_pvm:
+            return
         actions = list(torch_to_numpy(actions))
         buffer_indexes = (indexes + 1).tolist()
         pvm_indexes = indexes.tolist()
 
         if test:
-            # update portfolio vector memory
-            self.test_pvm.add_at(actions, pvm_indexes)
-            if buffer_indexes[-1] >= len(self.test_buffer):
-                actions.pop()
-                buffer_indexes.pop()
-            # update replay buffer last action value
-            self.test_buffer.update_value(actions, buffer_indexes, 1)
+            if update_pvm:
+                # update portfolio vector memory
+                self.test_pvm.add_at(actions, pvm_indexes)
+            if update_rb:
+                if buffer_indexes[-1] >= len(self.test_buffer):
+                    actions.pop()
+                    buffer_indexes.pop()
+                # update replay buffer last action value
+                self.test_buffer.update_value(actions, buffer_indexes, 1)
         else:
             # update portfolio vector memory
-            self.train_pvm.add_at(actions, pvm_indexes)
-            if buffer_indexes[-1] >= len(self.train_buffer):
-                actions.pop()
-                buffer_indexes.pop()
-            # update replay buffer last action value
-            self.train_buffer.update_value(actions, buffer_indexes, 1)
+            if update_pvm:
+                # update portfolio vector memory
+                self.train_pvm.add_at(actions, pvm_indexes)
+            if update_rb:
+                if buffer_indexes[-1] >= len(self.train_buffer):
+                    actions.pop()
+                    buffer_indexes.pop()
+                # update replay buffer last action value
+                self.train_buffer.update_value(actions, buffer_indexes, 1)
 
     def _plot_loss(self, loss, plot_index):
         """Plots the policy loss in tensorboard.
