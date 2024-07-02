@@ -14,6 +14,7 @@ from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
 from rl_portfolio.utils import apply_action_noise
+from rl_portfolio.utils import combine_replay_buffers
 from rl_portfolio.utils import torch_to_numpy
 from rl_portfolio.utils import numpy_to_torch
 from rl_portfolio.utils import RLDataset
@@ -21,7 +22,8 @@ from rl_portfolio.utils import RLDataset
 
 class PolicyGradient:
     """Class implementing policy gradient algorithm to train portfolio
-    optimization agents.
+    optimization agents. This class implements the work introduced in the
+    following article: https://doi.org/10.48550/arXiv.1706.10059.
 
     Note:
         During testing, the agent is optimized through online learning.
@@ -40,7 +42,6 @@ class PolicyGradient:
         env,
         policy=EIIE,
         policy_kwargs=None,
-        validation_env=None,
         replay_buffer=GeometricReplayBuffer,
         batch_size=100,
         sample_bias=1.0,
@@ -60,6 +61,7 @@ class PolicyGradient:
             policy: Policy architecture to be used.
             policy_kwargs: Arguments to be used in the policy network.
             validation_env: Validation environment.
+            validation_kwargs: Arguments to be used in the validation step.
             replay_buffer: Class of replay buffer to be used to sample
                 experiences in training.
             batch_size: Batch size to train neural network.
@@ -82,7 +84,6 @@ class PolicyGradient:
         """
         self.policy = policy
         self.policy_kwargs = {} if policy_kwargs is None else policy_kwargs
-        self.validation_env = validation_env
         self.batch_size = batch_size
         self.sample_bias = sample_bias
         self.sample_from_start = sample_from_start
@@ -145,96 +146,174 @@ class PolicyGradient:
             dataset=dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True
         )
 
-    def train(self, episodes=100):
-        """Training sequence.
+    def _run_episode(self, test=False, gradient_steps=0, initial_index=0):
+        """Runs a full episode (the agent rolls through all the environment's data).
+        At the end of each simuloation step, the agent can perform a number of gradient
+        ascent operations if specified in the arguments.
 
         Args:
-            episodes: Number of episodes to simulate.
-        """
-        gradient_step = 0
+            test: If True, the episode is running during a test routine.
+            gradient_steps: The number of gradient ascent operations the agent will
+                perform after each simulation step (online learning).
+            initial_index: Initial index value of the simulation step. It is used when
+                the replay buffer is pre-filled with experiences and its capacity is
+                bigger than the episode length.
 
-        for i in tqdm(range(1, episodes + 1)):
+        Returns:
+            Dictionary with episode metrics.
+        """
+        if test:
+            obs, info = self.test_env.reset()  # observation
+            self.test_pvm.reset()  # reset portfolio vector memory
+        else:
             obs, info = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
-            done = False
-            metrics = {"rewards": []}
+        done = False
+        metrics = {"rewards": []}
+        index = initial_index
+        while not done:
+            # define policy input tensors
+            last_action = (
+                self.test_pvm.retrieve() if test else self.train_pvm.retrieve()
+            )
+            obs_batch = numpy_to_torch(obs, add_batch_dim=True, device=self.device)
+            last_action_batch = numpy_to_torch(
+                last_action, add_batch_dim=True, device=self.device
+            )
 
-            while not done:
-                # define policy input tensors
-                last_action = self.train_pvm.retrieve()
-                obs_batch = numpy_to_torch(obs, add_batch_dim=True, device=self.device)
-                last_action_batch = numpy_to_torch(
-                    last_action, add_batch_dim=True, device=self.device
-                )
+            # define action
+            action = torch_to_numpy(
+                self.train_policy(obs_batch, last_action_batch), squeeze=True
+            )
 
-                # define action
-                action = torch_to_numpy(
-                    self.train_policy(obs_batch, last_action_batch), squeeze=True
-                )
+            # update portfolio vector memory
+            self.test_pvm.add(action) if test else self.train_pvm.add(action)
 
-                # update portfolio vector memory
-                self.train_pvm.add(action)
+            # run simulation step
+            next_obs, reward, done, _, info = (
+                self.test_env.step(action) if test else self.train_env.step(action)
+            )
 
-                # run simulation step
-                next_obs, reward, done, _, info = self.train_env.step(action)
+            # add experience to replay buffer
+            exp = (obs, last_action, info["price_variation"], index)
+            self.test_buffer.add(exp) if test else self.train_buffer.add(exp)
+            index += 1
 
-                # add experience to replay buffer
-                exp = (obs, last_action, info["price_variation"], info["trf_mu"])
-                self.train_buffer.add(exp)
+            # log rewards
+            metrics["rewards"].append(reward)
 
-                # log rewards
-                metrics["rewards"].append(reward)
+            # if episode ended, get metrics to log
+            if "metrics" in info:
+                metrics.update(info["metrics"])
 
-                # if episode ended, get metrics to log
-                if "metrics" in info:
-                    metrics.update(info["metrics"])
+            # update policy networks
+            if gradient_steps > 0 and self._can_update_policy(test=test):
+                for i in range(gradient_steps):
+                    self._gradient_ascent(test=test)
 
-                # update policy networks
-                if self._can_update_policy():
-                    policy_loss = self._gradient_ascent()
+            obs = next_obs
 
-                    # log policy loss
-                    gradient_step += 1
-                    if self.summary_writer:
-                        self.summary_writer.add_scalar(
-                            "Loss/Train", policy_loss, gradient_step
-                        )
+        return metrics
 
-                obs = next_obs
+    def train(
+        self,
+        steps=10000,
+        logging_period=250,
+        valid_period=None,
+        valid_env=None,
+        valid_gradient_steps=1,
+        valid_use_train_buffer=True,
+        valid_replay_buffer=None,
+        valid_batch_size=None,
+        valid_sample_bias=None,
+        valid_sample_from_start=None,
+        valid_lr=None,
+        valid_optimizer=None,
+    ):
+        """Training sequence. Initially, the algorithm runs a full episode without 
+        any training in order to full replay buffers. Then, several training steps 
+        are executed using data from the replay buffer in order to maximize the
+        objective function. At the end of each training step, the buffer is updated
+        with new outputs of the policy network.
 
-            # gradient ascent with episode remaining buffer data
-            if self._can_update_policy(end_of_episode=True):
+        Note:
+            The validation step is run after every valid_period training steps. This
+            step simply runs an episode of the testing environment performing 
+            valid_gradient_step training steps after each simulation step, in order 
+            to perform online learning. To disable online learning, set gradient steps
+            or learning rate to 0, or set a very big batch size.
+
+        Args:
+            steps: Number of training steps.
+            logging_period: Number of training steps to perform gradient ascent
+                before running a full episode and log the agent's metrics.
+            valid_period: Number of training steps to perform before running a full
+                episode in the validation environment and log metrics. If None, no
+                validation is done.
+            valid_env: Validation environment. If None, no validation is performed.
+            valid_gradient_steps: Number of gradient ascent steps to perform after
+                each simulation step in the validation period.
+            valid_use_train_buffer: If True, the validation period also makes use of
+                experiences in the training replay buffer to perform online training.
+                Set this option to True if the validation period is immediately after
+                the training period.
+            valid_replay_buffer: Type of replay buffer to use in validation. If None,
+                it will be equal to the training replay buffer.
+            valid_batch_size: Batch size to use in validation. If None, the training
+                batch size is used.
+            valid_sample_bias: Sample bias to be used if replay buffer is
+                GeometricReplayBuffer. If None, the training sample bias is used.
+            valid_sample_from_start: If True, the GeometricReplayBuffer will perform
+                geometric distribution sampling from the beginning of the ordered
+                experiences. If None, the training sample bias is used.
+            valid_lr: Learning rate to perform gradient ascent in validation. If None,
+                the training learning rate is used instead.
+            valid_optimizer: Type of optimizer to use in the validation. If None, the
+                same type used in training is set.
+        """
+        # If periods are None, loggings and validations will only happen at
+        # the end of training.
+        logging_period = steps if logging_period is None else logging_period
+        valid_period = steps if valid_period is None else valid_period
+
+        # run the episode to fill the buffers
+        self._run_episode()
+
+        # Start training
+        for step in tqdm(range(1, steps + 1)):
+            if self._can_update_policy():
                 policy_loss = self._gradient_ascent()
 
-                # log policy loss
-                gradient_step += 1
-                if self.summary_writer:
-                    self.summary_writer.add_scalar(
-                        "Loss/Train", policy_loss, gradient_step
+                # plot policy loss in tensorboard
+                self._plot_loss(policy_loss, step)
+
+                # run episode to log metrics
+                if step % logging_period == 0:
+                    metrics = self._run_episode()
+                    self._plot_metrics(
+                        metrics, plot_index=int(step / logging_period), test=False
                     )
 
-            # log training metrics
-            if self.summary_writer:
-                self.summary_writer.add_scalar(
-                    "Final Accumulative Portfolio Value/Train", metrics["fapv"], i
-                )
-                self.summary_writer.add_scalar(
-                    "Maximum DrawDown/Train", metrics["mdd"], i
-                )
-                self.summary_writer.add_scalar(
-                    "Sharpe Ratio/Train", metrics["sharpe"], i
-                )
-                self.summary_writer.add_scalar(
-                    "Mean Reward/Train", np.mean(metrics["rewards"]), i
-                )
-
-            # validation step
-            if self.validation_env:
-                self.test(self.validation_env, log_index=i)
+                # validation step
+                if valid_env and step % valid_period == 0:
+                    self.test(
+                        valid_env,
+                        gradient_steps=valid_gradient_steps,
+                        use_train_buffer=valid_use_train_buffer,
+                        policy=None,
+                        replay_buffer=valid_replay_buffer,
+                        batch_size=valid_batch_size,
+                        sample_bias=valid_sample_bias,
+                        sample_from_start=valid_sample_from_start,
+                        lr=valid_lr,
+                        optimizer=valid_optimizer,
+                        plot_index=int(step / valid_period),
+                    )
 
     def _setup_test(
         self,
         env,
+        use_train_buffer,
         policy,
         replay_buffer,
         batch_size,
@@ -247,6 +326,9 @@ class PolicyGradient:
 
         Args:
             env: Environment.
+            use_train_buffer: If True, the test period also makes use of experiences in
+                the training replay buffer to perform online training. Set this option
+                to True if the test period is immediately after the training period.
             policy: Policy architecture to be used.
             replay_buffer: Class of replay buffer to be used.
             batch_size: Batch size to train neural network.
@@ -279,6 +361,10 @@ class PolicyGradient:
         # replay buffer and portfolio vector memory
         self.test_batch_size = batch_size
         self.test_buffer = replay_buffer(capacity=env.episode_length)
+        if use_train_buffer:
+            self.test_buffer = combine_replay_buffers(
+                [self.train_buffer, self.test_buffer], replay_buffer
+            )
         self.test_pvm = PortfolioVectorMemory(env.episode_length, env.portfolio_size)
 
         # dataset and dataloader
@@ -292,6 +378,8 @@ class PolicyGradient:
     def test(
         self,
         env,
+        gradient_steps=1,
+        use_train_buffer=False,
         policy=None,
         replay_buffer=None,
         batch_size=None,
@@ -299,12 +387,20 @@ class PolicyGradient:
         sample_from_start=None,
         lr=None,
         optimizer=None,
-        log_index=0,
+        plot_index=None,
     ):
-        """Tests the policy with online learning.
+        """Tests the policy with online learning. The test sequence runs an episode of 
+        the environment and performs gradient_step training steps after each simulation 
+        step in order to perform online learning. To disable online learning, set gradient 
+        steps or learning rate to 0, or set a very big batch size. 
 
         Args:
             env: Environment to be used in testing.
+            gradient_steps: Number of gradient ascent steps to perform after each
+                simulation step.
+            use_train_buffer: If True, the test period also makes use of experiences in
+                the training replay buffer to perform online training. Set this option
+                to True if the test period is immediately after the training period.
             policy: Policy architecture to be used. If None, it will use the training
                 architecture.
             replay_buffer: Class of replay buffer to be used. If None, it will use the
@@ -322,13 +418,15 @@ class PolicyGradient:
                 learning rate.
             optimizer: Optimizer of neural network. If None, it will use the training
                 optimizer.
-            log_index: Index to be used to log metrics.
+            plot_index: Index (x-axis) to be used to plot metrics. If None, no plotting
+                is performed.
 
         Note:
             To disable online learning, set learning rate to 0 or a very big batch size.
         """
         self._setup_test(
             env,
+            use_train_buffer,
             policy,
             replay_buffer,
             batch_size,
@@ -338,71 +436,31 @@ class PolicyGradient:
             optimizer,
         )
 
-        obs, info = self.test_env.reset()  # observation
-        self.test_pvm.reset()  # reset portfolio vector memory
-        done = False
-        steps = 0
-        metrics = {"rewards": []}
-
-        while not done:
-            steps += 1
-            # define last_action and action and update portfolio vector memory
-            last_action = self.test_pvm.retrieve()
-            obs_batch = numpy_to_torch(obs, add_batch_dim=True, device=self.device)
-            last_action_batch = numpy_to_torch(
-                last_action, add_batch_dim=True, device=self.device
-            )
-            action = torch_to_numpy(
-                self.test_policy(obs_batch, last_action_batch), squeeze=True
-            )
-            self.test_pvm.add(action)
-
-            # run simulation step
-            next_obs, reward, done, _, info = self.test_env.step(action)
-
-            # add experience to replay buffer
-            exp = (obs, last_action, info["price_variation"], info["trf_mu"])
-            self.test_buffer.add(exp)
-
-            # log rewards
-            metrics["rewards"].append(reward)
-
-            # if episode ended, get metrics to log
-            if "metrics" in info:
-                metrics.update(info["metrics"])
-
-            # update policy networks
-            if self._can_update_policy(test=True):
-                self._gradient_ascent(test=True)
-
-            obs = next_obs
+        # run episode performing gradient ascent after each simulation step (online learning)
+        initial_index = self.train_buffer.capacity if use_train_buffer else 0
+        metrics = self._run_episode(
+            test=True, gradient_steps=gradient_steps, initial_index=initial_index
+        )
 
         # log test metrics
-        if self.summary_writer:
-            self.summary_writer.add_scalar(
-                "Final Accumulative Portfolio Value/Test", metrics["fapv"], log_index
-            )
-            self.summary_writer.add_scalar(
-                "Maximum DrawDown/Test", metrics["mdd"], log_index
-            )
-            self.summary_writer.add_scalar(
-                "Sharpe Ratio/Test", metrics["sharpe"], log_index
-            )
-            self.summary_writer.add_scalar(
-                "Mean Reward/Test", np.mean(metrics["rewards"]), log_index
-            )
+        if plot_index is not None:
+            self._plot_metrics(metrics, plot_index, test=True)
 
-    def _gradient_ascent(self, test=False):
+    def _gradient_ascent(self, test=False, update_rb=True, update_pvm=False):
         """Performs the gradient ascent step in the policy gradient algorithm.
 
         Args:
             test: If true, it uses the test dataloader and policy.
+            update_rb: If True, replay buffers will be updated after gradient
+                ascent.
+            update_pvm: If True, portfolio vector memories will be updated
+                after gradient ascent.
 
         Returns:
-            Negative of policy loss (since it's gradient ascent)
+            Negative of policy loss (since it's gradient ascent).
         """
         # get batch data from dataloader
-        obs, last_actions, price_variations, trf_mu = (
+        obs, last_actions, price_variations, indexes = (
             next(iter(self.test_dataloader))
             if test
             else next(iter(self.train_dataloader))
@@ -410,7 +468,6 @@ class PolicyGradient:
         obs = obs.to(self.device)
         last_actions = last_actions.to(self.device)
         price_variations = price_variations.to(self.device)
-        trf_mu = trf_mu.unsqueeze(1).to(self.device)
 
         # define agent's actions and apply noise.
         actions = (
@@ -447,6 +504,9 @@ class PolicyGradient:
             policy_loss.backward()
             self.train_optimizer.step()
 
+        # actions can be updated in the buffers and memories
+        self._update_buffers(actions, indexes, test, update_rb, update_pvm)
+
         return -policy_loss
 
     def _can_update_policy(self, test=False, end_of_episode=False):
@@ -471,3 +531,80 @@ class PolicyGradient:
         if len(buffer) >= batch_size and not end_of_episode:
             return True
         return False
+
+    def _update_buffers(self, actions, indexes, test, update_rb=True, update_pvm=False):
+        """Updates the portfolio vector memory and the replay buffers considering the 
+        actions taken during gradient ascent.
+
+        Args:
+            actions: Batch of performed actions with shape (batch_size, action_size).
+            indexes: Batch with the indices of the batch data used in in the gradient
+                ascent. Shape is (batch_size,).
+            test: If True, test buffers must be updated.
+            update_rb: If True, updates replay buffers.
+            update_pvm: If True, updates portfolio vector memories.
+        """
+        if not update_rb and not update_pvm:
+            return
+        actions = list(torch_to_numpy(actions))
+        buffer_indexes = (indexes + 1).tolist()
+        pvm_indexes = indexes.tolist()
+
+        if test:
+            if update_pvm:
+                # update portfolio vector memory
+                self.test_pvm.add_at(actions, pvm_indexes)
+            if update_rb:
+                if buffer_indexes[-1] >= len(self.test_buffer):
+                    actions.pop()
+                    buffer_indexes.pop()
+                # update replay buffer last action value
+                self.test_buffer.update_value(actions, buffer_indexes, 1)
+        else:
+            # update portfolio vector memory
+            if update_pvm:
+                # update portfolio vector memory
+                self.train_pvm.add_at(actions, pvm_indexes)
+            if update_rb:
+                if buffer_indexes[-1] >= len(self.train_buffer):
+                    actions.pop()
+                    buffer_indexes.pop()
+                # update replay buffer last action value
+                self.train_buffer.update_value(actions, buffer_indexes, 1)
+
+    def _plot_loss(self, loss, plot_index):
+        """Plots the policy loss in tensorboard.
+
+        Args:
+            loss: The value of the policy loss.
+            plot_index: Index (x-axis) to be used to plot the loss
+        """
+        if self.summary_writer:
+            self.summary_writer.add_scalar("Loss/Train", loss, plot_index)
+
+    def _plot_metrics(self, metrics, plot_index, test):
+        """Plots the metrics calculated after an episode in tensorboard.
+
+        Args:
+            metrics: Dictionary containing the calculated metrics.
+            plot_index: Index (x-axis) to be used to plot metrics.
+            test: If True, metrics from a testing episode are being used.
+        """
+        context = "Test" if test else "Train"
+        if self.summary_writer:
+            self.summary_writer.add_scalar(
+                "Final Accumulative Portfolio Value/{}".format(context),
+                metrics["fapv"],
+                plot_index,
+            )
+            self.summary_writer.add_scalar(
+                "Maximum DrawDown/{}".format(context), metrics["mdd"], plot_index
+            )
+            self.summary_writer.add_scalar(
+                "Sharpe Ratio/{}".format(context), metrics["sharpe"], plot_index
+            )
+            self.summary_writer.add_scalar(
+                "Mean Reward/{}".format(context),
+                np.mean(metrics["rewards"]),
+                plot_index,
+            )
