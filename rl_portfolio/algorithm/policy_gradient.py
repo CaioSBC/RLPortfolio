@@ -146,7 +146,9 @@ class PolicyGradient:
             dataset=dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True
         )
 
-    def _run_episode(self, test=False, gradient_steps=0, initial_index=0):
+    def _run_episode(
+        self, test=False, gradient_steps=0, initial_index=0, plot_loss_index=None
+    ):
         """Runs a full episode (the agent rolls through all the environment's data).
         At the end of each simuloation step, the agent can perform a number of gradient
         ascent operations if specified in the arguments.
@@ -158,6 +160,8 @@ class PolicyGradient:
             initial_index: Initial index value of the simulation step. It is used when
                 the replay buffer is pre-filled with experiences and its capacity is
                 bigger than the episode length.
+            plot_loss_index: Index value to be used to log the policy loss. If None, no
+                logging is performed.
 
         Returns:
             Dictionary with episode metrics.
@@ -165,9 +169,19 @@ class PolicyGradient:
         if test:
             obs, info = self.test_env.reset()  # observation
             self.test_pvm.reset()  # reset portfolio vector memory
+            plot_loss_index = (  # initial value of log loss index
+                plot_loss_index * self.test_env.episode_length
+                if plot_loss_index is not None
+                else plot_loss_index
+            )
         else:
             obs, info = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
+            plot_loss_index = (
+                plot_loss_index * self.test_env.episode_length
+                if plot_loss_index is not None
+                else plot_loss_index
+            )
         done = False
         metrics = {"rewards": []}
         index = initial_index
@@ -209,7 +223,10 @@ class PolicyGradient:
             # update policy networks
             if gradient_steps > 0 and self._can_update_policy(test=test):
                 for i in range(gradient_steps):
-                    self._gradient_ascent(test=test)
+                    policy_loss = self._gradient_ascent(test=test)
+                    if plot_loss_index is not None:
+                        self._plot_loss(policy_loss, plot_loss_index)
+                        plot_loss_index += 1
 
             obs = next_obs
 
@@ -230,16 +247,16 @@ class PolicyGradient:
         valid_lr=None,
         valid_optimizer=None,
     ):
-        """Training sequence. Initially, the algorithm runs a full episode without 
-        any training in order to full replay buffers. Then, several training steps 
+        """Training sequence. Initially, the algorithm runs a full episode without
+        any training in order to full replay buffers. Then, several training steps
         are executed using data from the replay buffer in order to maximize the
         objective function. At the end of each training step, the buffer is updated
         with new outputs of the policy network.
 
         Note:
             The validation step is run after every valid_period training steps. This
-            step simply runs an episode of the testing environment performing 
-            valid_gradient_step training steps after each simulation step, in order 
+            step simply runs an episode of the testing environment performing
+            valid_gradient_step training steps after each simulation step, in order
             to perform online learning. To disable online learning, set gradient steps
             or learning rate to 0, or set a very big batch size.
 
@@ -389,10 +406,10 @@ class PolicyGradient:
         optimizer=None,
         plot_index=None,
     ):
-        """Tests the policy with online learning. The test sequence runs an episode of 
-        the environment and performs gradient_step training steps after each simulation 
-        step in order to perform online learning. To disable online learning, set gradient 
-        steps or learning rate to 0, or set a very big batch size. 
+        """Tests the policy with online learning. The test sequence runs an episode of
+        the environment and performs gradient_step training steps after each simulation
+        step in order to perform online learning. To disable online learning, set gradient
+        steps or learning rate to 0, or set a very big batch size.
 
         Args:
             env: Environment to be used in testing.
@@ -533,7 +550,7 @@ class PolicyGradient:
         return False
 
     def _update_buffers(self, actions, indexes, test, update_rb=True, update_pvm=False):
-        """Updates the portfolio vector memory and the replay buffers considering the 
+        """Updates the portfolio vector memory and the replay buffers considering the
         actions taken during gradient ascent.
 
         Args:
