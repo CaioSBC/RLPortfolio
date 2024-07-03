@@ -263,10 +263,11 @@ class PolicyGradient:
         Args:
             steps: Number of training steps.
             logging_period: Number of training steps to perform gradient ascent
-                before running a full episode and log the agent's metrics.
+                before running a full episode and log the agent's metrics. If None,
+                logging will be performed in the end of all the training procedure.
             valid_period: Number of training steps to perform before running a full
-                episode in the validation environment and log metrics. If None, no
-                validation is done.
+                episode in the validation environment and log metrics. If None,
+                validation will happen in the end of all the training procedure.
             valid_env: Validation environment. If None, no validation is performed.
             valid_gradient_steps: Number of gradient ascent steps to perform after
                 each simulation step in the validation period.

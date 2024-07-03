@@ -36,11 +36,12 @@ class EpisodicPolicyGradient(PolicyGradient):
         valid_lr=None,
         valid_optimizer=None,
     ):
-        """Training sequence. Initially, the algorithm runs a full episode without
-        any training in order to full replay buffers. Then, several training steps
-        are executed using data from the replay buffer in order to maximize the
-        objective function. At the end of each training step, the buffer is updated
-        with new outputs of the policy network.
+        """Training sequence. The algorithm runs the specified number of episodes and
+        after every simulation step, a defined number of gradient ascent steps are
+        performed. This episodic version of policy gradient is suitable to
+        non-deterministic environments whose observations or price-variations can differ
+        in different episodes, since the replay buffer is completely updated when the
+        algorithm rolls through the training data.
 
         Note:
             The validation step is run after every valid_period training steps. This
@@ -50,12 +51,13 @@ class EpisodicPolicyGradient(PolicyGradient):
             or learning rate to 0, or set a very big batch size.
 
         Args:
-            steps: Number of training steps.
-            logging_period: Number of training steps to perform gradient ascent
-                before running a full episode and log the agent's metrics.
-            valid_period: Number of training steps to perform before running a full
-                episode in the validation environment and log metrics. If None, no
-                validation is done.
+            episodes: Number of training episodes. (Training metrics are logged after
+                every episode).
+            gradient_steps: Number of gradient ascent steps to perform after every
+                simulation step of the episodes.
+            valid_period: Number of episodes to run before running a full episode in the
+                validation environment and log metrics. If None, validation will happen
+                in the end of all the training procedure.
             valid_env: Validation environment. If None, no validation is performed.
             valid_gradient_steps: Number of gradient ascent steps to perform after
                 each simulation step in the validation period.
