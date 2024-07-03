@@ -178,7 +178,7 @@ class PolicyGradient:
             obs, info = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
             plot_loss_index = (
-                plot_loss_index * self.test_env.episode_length
+                plot_loss_index * self.train_env.episode_length
                 if plot_loss_index is not None
                 else plot_loss_index
             )
