@@ -1,18 +1,8 @@
 from __future__ import annotations
 
-import copy
-
-import numpy as np
-import torch
-from torch.optim import AdamW
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from rl_portfolio.algorithm import PolicyGradient
-from rl_portfolio.utils import torch_to_numpy
-from rl_portfolio.utils import numpy_to_torch
-from rl_portfolio.utils import RLDataset
+from rl_portfolio.algorithm.policy_gradient import PolicyGradient
 
 
 class EpisodicPolicyGradient(PolicyGradient):
@@ -46,16 +36,16 @@ class EpisodicPolicyGradient(PolicyGradient):
         valid_lr=None,
         valid_optimizer=None,
     ):
-        """Training sequence. Initially, the algorithm runs a full episode without 
-        any training in order to full replay buffers. Then, several training steps 
+        """Training sequence. Initially, the algorithm runs a full episode without
+        any training in order to full replay buffers. Then, several training steps
         are executed using data from the replay buffer in order to maximize the
         objective function. At the end of each training step, the buffer is updated
         with new outputs of the policy network.
 
         Note:
             The validation step is run after every valid_period training steps. This
-            step simply runs an episode of the testing environment performing 
-            valid_gradient_step training steps after each simulation step, in order 
+            step simply runs an episode of the testing environment performing
+            valid_gradient_step training steps after each simulation step, in order
             to perform online learning. To disable online learning, set gradient steps
             or learning rate to 0, or set a very big batch size.
 
@@ -94,9 +84,7 @@ class EpisodicPolicyGradient(PolicyGradient):
         for episode in tqdm(range(1, episodes + 1)):
             # run and log episode
             metrics = self._run_episode(gradient_steps=gradient_steps)
-            self._plot_metrics(
-                    metrics, plot_index=episode, test=False
-                )
+            self._plot_metrics(metrics, plot_index=episode, test=False)
 
             # validation step
             if valid_env and episode % valid_period == 0:
