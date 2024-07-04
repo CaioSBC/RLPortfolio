@@ -565,30 +565,29 @@ class PolicyGradient:
         if not update_rb and not update_pvm:
             return
         actions = list(torch_to_numpy(actions))
-        buffer_indexes = (indexes + 1).tolist()
-        pvm_indexes = indexes.tolist()
+        indexes = (indexes + 1).tolist()
 
         if test:
             if update_pvm:
                 # update portfolio vector memory
-                self.test_pvm.add_at(actions, pvm_indexes)
+                self.test_pvm.add_at(actions, indexes)
             if update_rb:
-                if buffer_indexes[-1] >= len(self.test_buffer):
+                if indexes[-1] >= len(self.test_buffer):
                     actions.pop()
-                    buffer_indexes.pop()
+                    indexes.pop()
                 # update replay buffer last action value
-                self.test_buffer.update_value(actions, buffer_indexes, 1)
+                self.test_buffer.update_value(actions, indexes, 1)
         else:
             # update portfolio vector memory
             if update_pvm:
                 # update portfolio vector memory
-                self.train_pvm.add_at(actions, pvm_indexes)
+                self.train_pvm.add_at(actions, indexes)
             if update_rb:
-                if buffer_indexes[-1] >= len(self.train_buffer):
+                if indexes[-1] >= len(self.train_buffer):
                     actions.pop()
-                    buffer_indexes.pop()
+                    indexes.pop()
                 # update replay buffer last action value
-                self.train_buffer.update_value(actions, buffer_indexes, 1)
+                self.train_buffer.update_value(actions, indexes, 1)
 
     def _plot_loss(self, loss, plot_index):
         """Plots the policy loss in tensorboard.

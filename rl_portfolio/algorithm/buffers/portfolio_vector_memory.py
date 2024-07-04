@@ -14,6 +14,14 @@ class PortfolioVectorMemory:
         self.portfolio_size = portfolio_size
         self.reset()
 
+    def __len__(self):
+        """Represents the size of the portfolio vector memory.
+
+        Returns:
+            Size of the portfolio vector memory.
+        """
+        return len(self.memory)
+
     def reset(self):
         self.memory = [np.array([1] + [0] * self.portfolio_size, dtype=np.float32)] * (
             self.capacity + 1
