@@ -147,7 +147,12 @@ class PolicyGradient:
         )
 
     def _run_episode(
-        self, test=False, gradient_steps=0, initial_index=0, plot_loss_index=None
+        self,
+        test=False,
+        gradient_steps=0,
+        initial_index=0,
+        noise_index=None,
+        plot_loss_index=None,
     ):
         """Runs a full episode (the agent rolls through all the environment's data).
         At the end of each simuloation step, the agent can perform a number of gradient
@@ -160,6 +165,8 @@ class PolicyGradient:
             initial_index: Initial index value of the simulation step. It is used when
                 the replay buffer is pre-filled with experiences and its capacity is
                 bigger than the episode length.
+            noise_index: Index value to be used in case of a callable as noise value. If
+                None, an exception might be raised if action noise is callable.
             plot_loss_index: Index value to be used to log the policy loss. If None, no
                 logging is performed.
 
@@ -170,7 +177,7 @@ class PolicyGradient:
             obs, info = self.test_env.reset()  # observation
             self.test_pvm.reset()  # reset portfolio vector memory
             plot_loss_index = (  # initial value of log loss index
-                plot_loss_index * self.test_env.episode_length
+                (plot_loss_index - 1) * self.test_env.episode_length + 1
                 if plot_loss_index is not None
                 else plot_loss_index
             )
@@ -178,7 +185,7 @@ class PolicyGradient:
             obs, info = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
             plot_loss_index = (
-                plot_loss_index * self.train_env.episode_length
+                (plot_loss_index - 1) * self.train_env.episode_length + 1
                 if plot_loss_index is not None
                 else plot_loss_index
             )
@@ -223,7 +230,9 @@ class PolicyGradient:
             # update policy networks
             if gradient_steps > 0 and self._can_update_policy(test=test):
                 for i in range(gradient_steps):
-                    policy_loss = self._gradient_ascent(test=test)
+                    policy_loss = self._gradient_ascent(
+                        test=test, noise_index=noise_index
+                    )
                     if plot_loss_index is not None:
                         self._plot_loss(policy_loss, plot_loss_index)
                         plot_loss_index += 1
@@ -300,7 +309,7 @@ class PolicyGradient:
         # Start training
         for step in tqdm(range(1, steps + 1)):
             if self._can_update_policy():
-                policy_loss = self._gradient_ascent()
+                policy_loss = self._gradient_ascent(noise_index=step)
 
                 # plot policy loss in tensorboard
                 self._plot_loss(policy_loss, step)
@@ -464,11 +473,15 @@ class PolicyGradient:
         if plot_index is not None:
             self._plot_metrics(metrics, plot_index, test=True)
 
-    def _gradient_ascent(self, test=False, update_rb=True, update_pvm=False):
+    def _gradient_ascent(
+        self, test=False, noise_index=None, update_rb=True, update_pvm=False
+    ):
         """Performs the gradient ascent step in the policy gradient algorithm.
 
         Args:
             test: If true, it uses the test dataloader and policy.
+            noise_index: Index value to be used in case of a callable as noise
+                value.
             update_rb: If True, replay buffers will be updated after gradient
                 ascent.
             update_pvm: If True, portfolio vector memories will be updated
@@ -487,14 +500,22 @@ class PolicyGradient:
         last_actions = last_actions.to(self.device)
         price_variations = price_variations.to(self.device)
 
-        # define agent's actions and apply noise.
-        actions = (
-            self.test_policy(obs, last_actions)
-            if test
-            else apply_action_noise(
-                self.train_policy(obs, last_actions), epsilon=self.action_noise
+        # define agent's actions
+        if test:
+            actions = self.test_policy(obs, last_actions)
+        else:
+            # in training, noise must be applied.
+            if callable(self.action_noise):
+                if noise_index is None:
+                    raise TypeError(
+                        "Noise index parameter of callable action noise is None."
+                    )
+                action_noise = self.action_noise(noise_index)
+            else:
+                action_noise = self.action_noise
+            actions = apply_action_noise(
+                self.train_policy(obs, last_actions), epsilon=action_noise
             )
-        )
 
         # calculate comission rate and transaction remainder factor
         comission_rate = (

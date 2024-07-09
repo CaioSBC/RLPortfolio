@@ -86,7 +86,9 @@ class EpisodicPolicyGradient(PolicyGradient):
         for episode in tqdm(range(1, episodes + 1)):
             # run and log episode
             metrics = self._run_episode(
-                gradient_steps=gradient_steps, plot_loss_index=episode - 1
+                gradient_steps=gradient_steps,
+                noise_index=episode,
+                plot_loss_index=episode,
             )
             self._plot_metrics(metrics, plot_index=episode, test=False)
 
