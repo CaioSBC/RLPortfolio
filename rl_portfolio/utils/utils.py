@@ -71,29 +71,34 @@ def apply_action_noise(actions, epsilon=0):
                 )
                 * epsilon,
             ).to(log_actions.device)
-        new_actions = torch.softmax(log_actions + noises, dim=1)
-        return new_actions
+        noisy_actions = torch.softmax(log_actions + noises, dim=1)
+        return noisy_actions
     else:
         return actions
 
 
 @torch.no_grad
-def apply_parameter_noise(model, mean=0.0, std=0.0, device="cpu"):
-    """Apply gaussian/normal noise to neural network.
+def apply_parameter_noise(model, epsilon=0):
+    """Apply noise to PyTorch model. If the model is a portfolio optimization
+    policy, the noise allows the agent to generate different actions and
+    explore the action space.
 
     Arg:
         model: PyTorch model to add parameter noise.
-        mean: Mean of gaussian/normal distribution.
-        std: Standard deviation of gaussian/normal distribution.
-        device: device of the model.
+        epsilon: Noise parameter.
 
     Returns:
         Copy of model with parameter noise.
     """
-    noise_model = copy.deepcopy(model)
-    for param in noise_model.parameters():
-        param += torch.normal(mean, std, size=param.shape).to(device)
-    return noise_model
+    if epsilon > 0:
+        noisy_model = copy.deepcopy(model)
+        for param in noisy_model.parameters():
+            param = param + torch.normal(
+                0, torch.abs(param) * epsilon, size=param.shape
+            ).to(param.device)
+        return noisy_model
+    else:
+        return model
 
 
 def torch_to_numpy(tensor, squeeze=False):

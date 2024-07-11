@@ -57,24 +57,28 @@ class PolicyGradient:
         """Initializes Policy Gradient for portfolio optimization.
 
         Args:
-            env: Training Environment.
+            env: Training environment.
             policy: Policy architecture to be used.
             policy_kwargs: Arguments to be used in the policy network.
             validation_env: Validation environment.
             validation_kwargs: Arguments to be used in the validation step.
-            replay_buffer: Class of replay buffer to be used to sample
-                experiences in training.
+            replay_buffer: Class of replay buffer to be used to sample experiences 
+                in training.
             batch_size: Batch size to train neural network.
-            sample_bias: Probability of success of a trial in a geometric
-                distribution. Only used if buffer is GeometricReplayBuffer.
-            sample_from_start: If True, will choose a sequence starting
-                from the start of the buffer. Otherwise, it will start from
-                the end. Only used if buffer is GeometricReplayBuffer.
-            lr: policy Neural network learning rate.
-            action_noise: Noise parameter (between 0 and 1) to be applied
-                during training.
-            parameter_noise: Standard deviation of gaussian noise applied
-                policy network parameters.
+            sample_bias: Probability of success of a trial in a geometric distribution. 
+                Only used if buffer is GeometricReplayBuffer.
+            sample_from_start: If True, will choose a sequence starting from the start
+                of the buffer. Otherwise, it will start from the end. Only used if 
+                buffer is GeometricReplayBuffer.
+            lr: policy neural network learning rate.
+            action_noise: Noise parameter (bigger than or equal to 0) to be applied to 
+                performed actions during training. It can be a value or a function whose
+                argument is the number of training episodes/steps and that outputs the
+                noise value.
+            parameter_noise: Noise parameter (bigger than or equal to 0) to be applied
+                to the parameters of the policy network during training. It can be a 
+                value or a function whose argument is the number of training episodes/
+                steps and that outputs the noise value.
             optimizer: Optimizer of neural network.
             use_tensorboard: If true, training logs will be added to
                 tensorboard.
@@ -504,7 +508,7 @@ class PolicyGradient:
         if test:
             actions = self.test_policy(obs, last_actions)
         else:
-            # in training, noise must be applied.
+            # define action noise.
             if callable(self.action_noise):
                 if noise_index is None:
                     raise TypeError(
