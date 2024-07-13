@@ -149,3 +149,5 @@ class EpisodicPolicyGradient(PolicyGradient):
             if episode == episodes:
                 pbar.colour = "green"
                 pbar.set_description("{}Completed".format(preffix))
+
+        return metrics, val_metrics
