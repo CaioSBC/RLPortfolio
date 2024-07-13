@@ -35,6 +35,8 @@ class EpisodicPolicyGradient(PolicyGradient):
         val_sample_from_start=None,
         val_lr=None,
         val_optimizer=None,
+        progress_bar="permanent",
+        name=None,
     ):
         """Training sequence. The algorithm runs the specified number of episodes and
         after every simulation step, a defined number of gradient ascent steps are
@@ -59,13 +61,13 @@ class EpisodicPolicyGradient(PolicyGradient):
                 validation environment and log metrics. If None, validation will happen
                 in the end of all the training procedure.
             val_env: Validation environment. If None, no validation is performed.
-            val_gradient_steps: Number of gradient ascent steps to perform after each 
+            val_gradient_steps: Number of gradient ascent steps to perform after each
                 simulation step in the validation period.
             val_use_train_buffer: If True, the validation period also makes use of
                 experiences in the training replay buffer to perform online training.
                 Set this option to True if the validation period is immediately after
                 the training period.
-            val_replay_buffer: Type of replay buffer to use in validation. If None, it 
+            val_replay_buffer: Type of replay buffer to use in validation. If None, it
                 will be equal to the training replay buffer.
             val_batch_size: Batch size to use in validation. If None, the training batch
                  size is used.
@@ -74,27 +76,60 @@ class EpisodicPolicyGradient(PolicyGradient):
             val_sample_from_start: If True, the GeometricReplayBuffer will perform
                 geometric distribution sampling from the beginning of the ordered
                 experiences. If None, the training sample bias is used.
-            val_lr: Learning rate to perform gradient ascent in validation. If None, the 
+            val_lr: Learning rate to perform gradient ascent in validation. If None, the
                 training learning rate is used instead.
-            val_optimizer: Type of optimizer to use in the validation. If None, the same 
+            val_optimizer: Type of optimizer to use in the validation. If None, the same
                 type used in training is set.
+            progress_bar: If "permanent", a progress bar is displayed and is kept when
+                completed. If "temporary", a progress bar is displayed but is deleted
+                when completed. If None (or any other value), no progress bar is
+                displayed.
+            name: Name of the training sequence (it is displayed in the progress bar).
+
+        Returns:
+            The following tuple is returned: (metrics, val_metrics).
+
+            metrics: Dictionary with metrics of the agent performance in the training
+                environment. If None, no training was performed.
+            val_metrics: Dictionary with metrics of the agent performance in the
+                validation environment. If None, no validation was performed.
         """
         # If period is None, validations will only happen at the end of training.
         val_period = episodes if val_period is None else val_period
 
+        # define tqdm arguments
+        preffix, disable, leave = self._tqdm_arguments(progress_bar, name)
+
+        # create metric variables
+        metrics = None
+        val_metrics = None
+
         # Start training
-        for episode in tqdm(range(1, episodes + 1)):
+        for episode in (
+            pbar := tqdm(
+                range(1, episodes + 1),
+                disable=disable,
+                leave=leave,
+                unit="episode",
+            )
+        ):
             # run and log episode
+            pbar.colour = "white"
+            pbar.set_description("{}Training agent".format(preffix))
             metrics = self._run_episode(
                 gradient_steps=gradient_steps,
                 noise_index=episode,
                 plot_loss_index=episode,
             )
             self._plot_metrics(metrics, plot_index=episode, test=False)
+            metrics.pop("rewards")
+            pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
 
             # validation step
             if val_env and episode % val_period == 0:
-                self.test(
+                pbar.colour = "yellow"
+                pbar.set_description("{}Validating agent".format(preffix))
+                val_metrics = self.test(
                     val_env,
                     gradient_steps=val_gradient_steps,
                     use_train_buffer=val_use_train_buffer,
@@ -107,3 +142,10 @@ class EpisodicPolicyGradient(PolicyGradient):
                     optimizer=val_optimizer,
                     plot_index=int(episode / val_period),
                 )
+                val_metrics.pop("rewards")
+
+                pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
+
+            if episode == episodes:
+                pbar.colour = "green"
+                pbar.set_description("{}Completed".format(preffix))

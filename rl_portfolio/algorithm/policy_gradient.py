@@ -416,7 +416,7 @@ class PolicyGradient:
                     )
                     metrics.pop("rewards")
 
-                pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
+                    pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
 
                 # validation step
                 if val_env and step % val_period == 0:
@@ -437,7 +437,7 @@ class PolicyGradient:
                     )
                     val_metrics.pop("rewards")
 
-                pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
+                    pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
 
             if step == steps:
                 pbar.colour = "green"
