@@ -25,16 +25,16 @@ class EpisodicPolicyGradient(PolicyGradient):
         self,
         episodes=100,
         gradient_steps=1,
-        valid_period=None,
-        valid_env=None,
-        valid_gradient_steps=1,
-        valid_use_train_buffer=True,
-        valid_replay_buffer=None,
-        valid_batch_size=None,
-        valid_sample_bias=None,
-        valid_sample_from_start=None,
-        valid_lr=None,
-        valid_optimizer=None,
+        val_period=None,
+        val_env=None,
+        val_gradient_steps=1,
+        val_use_train_buffer=True,
+        val_replay_buffer=None,
+        val_batch_size=None,
+        val_sample_bias=None,
+        val_sample_from_start=None,
+        val_lr=None,
+        val_optimizer=None,
     ):
         """Training sequence. The algorithm runs the specified number of episodes and
         after every simulation step, a defined number of gradient ascent steps are
@@ -44,9 +44,9 @@ class EpisodicPolicyGradient(PolicyGradient):
         algorithm rolls through the training data.
 
         Note:
-            The validation step is run after every valid_period training steps. This
+            The validation step is run after every val_period training steps. This
             step simply runs an episode of the testing environment performing
-            valid_gradient_step training steps after each simulation step, in order
+            val_gradient_step training steps after each simulation step, in order
             to perform online learning. To disable online learning, set gradient steps
             or learning rate to 0, or set a very big batch size.
 
@@ -55,32 +55,32 @@ class EpisodicPolicyGradient(PolicyGradient):
                 every episode).
             gradient_steps: Number of gradient ascent steps to perform after every
                 simulation step of the episodes.
-            valid_period: Number of episodes to run before running a full episode in the
+            val_period: Number of episodes to run before running a full episode in the
                 validation environment and log metrics. If None, validation will happen
                 in the end of all the training procedure.
-            valid_env: Validation environment. If None, no validation is performed.
-            valid_gradient_steps: Number of gradient ascent steps to perform after
-                each simulation step in the validation period.
-            valid_use_train_buffer: If True, the validation period also makes use of
+            val_env: Validation environment. If None, no validation is performed.
+            val_gradient_steps: Number of gradient ascent steps to perform after each 
+                simulation step in the validation period.
+            val_use_train_buffer: If True, the validation period also makes use of
                 experiences in the training replay buffer to perform online training.
                 Set this option to True if the validation period is immediately after
                 the training period.
-            valid_replay_buffer: Type of replay buffer to use in validation. If None,
-                it will be equal to the training replay buffer.
-            valid_batch_size: Batch size to use in validation. If None, the training
-                batch size is used.
-            valid_sample_bias: Sample bias to be used if replay buffer is
+            val_replay_buffer: Type of replay buffer to use in validation. If None, it 
+                will be equal to the training replay buffer.
+            val_batch_size: Batch size to use in validation. If None, the training batch
+                 size is used.
+            val_sample_bias: Sample bias to be used if replay buffer is
                 GeometricReplayBuffer. If None, the training sample bias is used.
-            valid_sample_from_start: If True, the GeometricReplayBuffer will perform
+            val_sample_from_start: If True, the GeometricReplayBuffer will perform
                 geometric distribution sampling from the beginning of the ordered
                 experiences. If None, the training sample bias is used.
-            valid_lr: Learning rate to perform gradient ascent in validation. If None,
-                the training learning rate is used instead.
-            valid_optimizer: Type of optimizer to use in the validation. If None, the
-                same type used in training is set.
+            val_lr: Learning rate to perform gradient ascent in validation. If None, the 
+                training learning rate is used instead.
+            val_optimizer: Type of optimizer to use in the validation. If None, the same 
+                type used in training is set.
         """
         # If period is None, validations will only happen at the end of training.
-        valid_period = episodes if valid_period is None else valid_period
+        val_period = episodes if val_period is None else val_period
 
         # Start training
         for episode in tqdm(range(1, episodes + 1)):
@@ -93,17 +93,17 @@ class EpisodicPolicyGradient(PolicyGradient):
             self._plot_metrics(metrics, plot_index=episode, test=False)
 
             # validation step
-            if valid_env and episode % valid_period == 0:
+            if val_env and episode % val_period == 0:
                 self.test(
-                    valid_env,
-                    gradient_steps=valid_gradient_steps,
-                    use_train_buffer=valid_use_train_buffer,
+                    val_env,
+                    gradient_steps=val_gradient_steps,
+                    use_train_buffer=val_use_train_buffer,
                     policy=None,
-                    replay_buffer=valid_replay_buffer,
-                    batch_size=valid_batch_size,
-                    sample_bias=valid_sample_bias,
-                    sample_from_start=valid_sample_from_start,
-                    lr=valid_lr,
-                    optimizer=valid_optimizer,
-                    plot_index=int(episode / valid_period),
+                    replay_buffer=val_replay_buffer,
+                    batch_size=val_batch_size,
+                    sample_bias=val_sample_bias,
+                    sample_from_start=val_sample_from_start,
+                    lr=val_lr,
+                    optimizer=val_optimizer,
+                    plot_index=int(episode / val_period),
                 )

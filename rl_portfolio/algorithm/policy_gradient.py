@@ -62,7 +62,7 @@ class PolicyGradient:
             policy_kwargs: Arguments to be used in the policy network.
             validation_env: Validation environment.
             validation_kwargs: Arguments to be used in the validation step.
-            replay_buffer: Class of replay buffer to be used to sample experiences in 
+            replay_buffer: Class of replay buffer to be used to sample experiences in
                 training.
             batch_size: Batch size to train neural network.
             sample_bias: Probability of success of a trial in a geometric distribution.
@@ -278,12 +278,12 @@ class PolicyGradient:
 
         return preffix, disable, leave
 
-    def _tqdm_postfix_dict(self, metrics, valid_metrics):
+    def _tqdm_postfix_dict(self, metrics, val_metrics):
         """Create tqdm postfix dictionary to print in progress bar.
 
         Args:
             metrics: Dictionary with metrics of training period.
-            valid_metrics: Dictionary with metrics of validation period. 
+            val_metrics: Dictionary with metrics of validation period.
 
         Returns:
             Dictionary with metrics to print progress bar postfix.
@@ -292,26 +292,28 @@ class PolicyGradient:
         if metrics is not None:
             dict_.update(metrics)
             dict_.pop("value")
-        if valid_metrics is not None:
-            new_valid_metrics = {"valid_" + str(key): val for key, val in valid_metrics.items()}
-            dict_.update(new_valid_metrics)
-            dict_.pop("valid_value")
+        if val_metrics is not None:
+            new_val_metrics = {
+                "val_" + str(key): val for key, val in val_metrics.items()
+            }
+            dict_.update(new_val_metrics)
+            dict_.pop("val_value")
         return dict_
 
     def train(
         self,
         steps,
         logging_period=None,
-        valid_period=None,
-        valid_env=None,
-        valid_gradient_steps=1,
-        valid_use_train_buffer=True,
-        valid_replay_buffer=None,
-        valid_batch_size=None,
-        valid_sample_bias=None,
-        valid_sample_from_start=None,
-        valid_lr=None,
-        valid_optimizer=None,
+        val_period=None,
+        val_env=None,
+        val_gradient_steps=1,
+        val_use_train_buffer=True,
+        val_replay_buffer=None,
+        val_batch_size=None,
+        val_sample_bias=None,
+        val_sample_from_start=None,
+        val_lr=None,
+        val_optimizer=None,
         progress_bar="permanent",
         name=None,
     ):
@@ -322,9 +324,9 @@ class PolicyGradient:
         with new outputs of the policy network.
 
         Note:
-            The validation step is run after every valid_period training steps. This
+            The validation step is run after every val_period training steps. This
             step simply runs an episode of the testing environment performing
-            valid_gradient_step training steps after each simulation step, in order
+            val_gradient_step training steps after each simulation step, in order
             to perform online learning. To disable online learning, set gradient steps
             or learning rate to 0, or set a very big batch size.
 
@@ -333,28 +335,28 @@ class PolicyGradient:
             logging_period: Number of training steps to perform gradient ascent
                 before running a full episode and log the agent's metrics. If None,
                 logging will be performed in the end of all the training procedure.
-            valid_period: Number of training steps to perform before running a full
+            val_period: Number of training steps to perform before running a full
                 episode in the validation environment and log metrics. If None,
                 validation will happen in the end of all the training procedure.
-            valid_env: Validation environment. If None, no validation is performed.
-            valid_gradient_steps: Number of gradient ascent steps to perform after
+            val_env: Validation environment. If None, no validation is performed.
+            val_gradient_steps: Number of gradient ascent steps to perform after
                 each simulation step in the validation period.
-            valid_use_train_buffer: If True, the validation period also makes use of
+            val_use_train_buffer: If True, the validation period also makes use of
                 experiences in the training replay buffer to perform online training.
                 Set this option to True if the validation period is immediately after
                 the training period.
-            valid_replay_buffer: Type of replay buffer to use in validation. If None,
+            val_replay_buffer: Type of replay buffer to use in validation. If None,
                 it will be equal to the training replay buffer.
-            valid_batch_size: Batch size to use in validation. If None, the training
+            val_batch_size: Batch size to use in validation. If None, the training
                 batch size is used.
-            valid_sample_bias: Sample bias to be used if replay buffer is
+            val_sample_bias: Sample bias to be used if replay buffer is
                 GeometricReplayBuffer. If None, the training sample bias is used.
-            valid_sample_from_start: If True, the GeometricReplayBuffer will perform
+            val_sample_from_start: If True, the GeometricReplayBuffer will perform
                 geometric distribution sampling from the beginning of the ordered
                 experiences. If None, the training sample bias is used.
-            valid_lr: Learning rate to perform gradient ascent in validation. If None,
+            val_lr: Learning rate to perform gradient ascent in validation. If None,
                 the training learning rate is used instead.
-            valid_optimizer: Type of optimizer to use in the validation. If None, the
+            val_optimizer: Type of optimizer to use in the validation. If None, the
                 same type used in training is set.
             progress_bar: If "permanent", a progress bar is displayed and is kept when
                 completed. If "temporary", a progress bar is displayed but is deleted
@@ -363,24 +365,24 @@ class PolicyGradient:
             name: Name of the training sequence (it is displayed in the progress bar).
 
         Returns:
-            The following tuple is returned: (metrics, valid_metrics).
+            The following tuple is returned: (metrics, val_metrics).
 
             metrics: Dictionary with metrics of the agent performance in the training
                 environment. If None, no training was performed.
-            valid_metrics: Dictionary with metrics of the agent performance in the
+            val_metrics: Dictionary with metrics of the agent performance in the
                 validation environment. If None, no validation was performed.
         """
         # If periods are None, loggings and validations will only happen at
         # the end of training.
         logging_period = steps if logging_period is None else logging_period
-        valid_period = steps if valid_period is None else valid_period
+        val_period = steps if val_period is None else val_period
 
         # define tqdm arguments
         preffix, disable, leave = self._tqdm_arguments(progress_bar, name)
 
         # create metric variables
         metrics = None
-        valid_metrics = None
+        val_metrics = None
 
         # Start training
         for step in (
@@ -414,34 +416,34 @@ class PolicyGradient:
                     )
                     metrics.pop("rewards")
 
-                pbar.set_postfix(self._tqdm_postfix_dict(metrics, valid_metrics))
+                pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
 
                 # validation step
-                if valid_env and step % valid_period == 0:
+                if val_env and step % val_period == 0:
                     pbar.colour = "yellow"
                     pbar.set_description("{}Validating agent".format(preffix))
-                    valid_metrics = self.test(
-                        valid_env,
-                        gradient_steps=valid_gradient_steps,
-                        use_train_buffer=valid_use_train_buffer,
+                    val_metrics = self.test(
+                        val_env,
+                        gradient_steps=val_gradient_steps,
+                        use_train_buffer=val_use_train_buffer,
                         policy=None,
-                        replay_buffer=valid_replay_buffer,
-                        batch_size=valid_batch_size,
-                        sample_bias=valid_sample_bias,
-                        sample_from_start=valid_sample_from_start,
-                        lr=valid_lr,
-                        optimizer=valid_optimizer,
-                        plot_index=int(step / valid_period),
+                        replay_buffer=val_replay_buffer,
+                        batch_size=val_batch_size,
+                        sample_bias=val_sample_bias,
+                        sample_from_start=val_sample_from_start,
+                        lr=val_lr,
+                        optimizer=val_optimizer,
+                        plot_index=int(step / val_period),
                     )
-                    valid_metrics.pop("rewards")
-                
-                pbar.set_postfix(self._tqdm_postfix_dict(metrics, valid_metrics))
+                    val_metrics.pop("rewards")
+
+                pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
 
             if step == steps:
-                pbar.colour = "green" 
+                pbar.colour = "green"
                 pbar.set_description("{}Completed".format(preffix))
 
-        return metrics, valid_metrics
+        return metrics, val_metrics
 
     def _setup_test(
         self,
@@ -593,7 +595,7 @@ class PolicyGradient:
             test: If true, it uses the test dataloader and policy.
             noise_index: Index value to be used in case of a callable as noise value.
             update_rb: If True, replay buffers will be updated after gradient ascent.
-            update_pvm: If True, portfolio vector memories will be updated after 
+            update_pvm: If True, portfolio vector memories will be updated after
                 gradient ascent.
 
         Returns:
