@@ -62,28 +62,27 @@ class PolicyGradient:
             policy_kwargs: Arguments to be used in the policy network.
             validation_env: Validation environment.
             validation_kwargs: Arguments to be used in the validation step.
-            replay_buffer: Class of replay buffer to be used to sample experiences 
-                in training.
+            replay_buffer: Class of replay buffer to be used to sample experiences in 
+                training.
             batch_size: Batch size to train neural network.
-            sample_bias: Probability of success of a trial in a geometric distribution. 
+            sample_bias: Probability of success of a trial in a geometric distribution.
                 Only used if buffer is GeometricReplayBuffer.
             sample_from_start: If True, will choose a sequence starting from the start
-                of the buffer. Otherwise, it will start from the end. Only used if 
+                of the buffer. Otherwise, it will start from the end. Only used if
                 buffer is GeometricReplayBuffer.
             lr: policy neural network learning rate.
-            action_noise: Noise parameter (bigger than or equal to 0) to be applied to 
+            action_noise: Noise parameter (bigger than or equal to 0) to be applied to
                 performed actions during training. It can be a value or a function whose
                 argument is the number of training episodes/steps and that outputs the
                 noise value.
             parameter_noise: Noise parameter (bigger than or equal to 0) to be applied
-                to the parameters of the policy network during training. It can be a 
+                to the parameters of the policy network during training. It can be a
                 value or a function whose argument is the number of training episodes/
                 steps and that outputs the noise value.
             optimizer: Optimizer of neural network.
-            use_tensorboard: If true, training logs will be added to
-                tensorboard.
-            summary_writer_kwargs: Arguments to be used in PyTorch's
-                tensorboard summary writer.
+            use_tensorboard: If true, training logs will be added to tensorboard.
+            summary_writer_kwargs: Arguments to be used in PyTorch's tensorboard summary
+                writer.
             device: Device where neural network is run.
         """
         self.policy = policy
@@ -245,10 +244,64 @@ class PolicyGradient:
 
         return metrics
 
+    def _tqdm_arguments(self, progress_bar, name):
+        """Parses tqdm arguments to training progress bar.
+
+        Args:
+            progress_bar: If "permanent", a progress bar is displayed and is kept when
+                completed. If "temporary", a progress bar is displayed but is deleted
+                when completed. If None (or any other value), no progress bar is
+                displayed.
+            name: Name of the training sequence (it is displayed in the progress bar).
+
+        Returns:
+            The following tuple is returned: (preffix, disable, leave).
+
+            preffix: Preffix to be added to tqdm desc argument.
+            disable: Value of tqdm disable argument.
+            leave: Value of tqdm leave argument
+        """
+        if name is None:
+            preffix = ""
+        else:
+            preffix = "" if name == "" else "{} - ".format(name)
+
+        if progress_bar == "permanent":
+            disable = False
+            leave = True
+        elif progress_bar == "temporary":
+            disable = False
+            leave = False
+        else:
+            disable = True
+            leave = False
+
+        return preffix, disable, leave
+
+    def _tqdm_postfix_dict(self, metrics, valid_metrics):
+        """Create tqdm postfix dictionary to print in progress bar.
+
+        Args:
+            metrics: Dictionary with metrics of training period.
+            valid_metrics: Dictionary with metrics of validation period. 
+
+        Returns:
+            Dictionary with metrics to print progress bar postfix.
+        """
+        dict_ = {}
+        if metrics is not None:
+            dict_.update(metrics)
+            dict_.pop("value")
+        if valid_metrics is not None:
+            new_valid_metrics = {"valid_" + str(key): val for key, val in valid_metrics.items()}
+            dict_.update(new_valid_metrics)
+            dict_.pop("valid_value")
+        return dict_
+
     def train(
         self,
-        steps=10000,
-        logging_period=250,
+        steps,
+        logging_period=None,
         valid_period=None,
         valid_env=None,
         valid_gradient_steps=1,
@@ -259,6 +312,8 @@ class PolicyGradient:
         valid_sample_from_start=None,
         valid_lr=None,
         valid_optimizer=None,
+        progress_bar="permanent",
+        name=None,
     ):
         """Training sequence. Initially, the algorithm runs a full episode without
         any training in order to full replay buffers. Then, several training steps
@@ -301,17 +356,48 @@ class PolicyGradient:
                 the training learning rate is used instead.
             valid_optimizer: Type of optimizer to use in the validation. If None, the
                 same type used in training is set.
+            progress_bar: If "permanent", a progress bar is displayed and is kept when
+                completed. If "temporary", a progress bar is displayed but is deleted
+                when completed. If None (or any other value), no progress bar is
+                displayed.
+            name: Name of the training sequence (it is displayed in the progress bar).
+
+        Returns:
+            The following tuple is returned: (metrics, valid_metrics).
+
+            metrics: Dictionary with metrics of the agent performance in the training
+                environment. If None, no training was performed.
+            valid_metrics: Dictionary with metrics of the agent performance in the
+                validation environment. If None, no validation was performed.
         """
         # If periods are None, loggings and validations will only happen at
         # the end of training.
         logging_period = steps if logging_period is None else logging_period
         valid_period = steps if valid_period is None else valid_period
 
-        # run the episode to fill the buffers
-        self._run_episode()
+        # define tqdm arguments
+        preffix, disable, leave = self._tqdm_arguments(progress_bar, name)
+
+        # create metric variables
+        metrics = None
+        valid_metrics = None
 
         # Start training
-        for step in tqdm(range(1, steps + 1)):
+        for step in (
+            pbar := tqdm(
+                range(1, steps + 1),
+                disable=disable,
+                leave=leave,
+                unit="step",
+            )
+        ):
+            # in the first step, fill the buffers.
+            if step == 1:
+                pbar.set_description("{}Filling replay buffer".format(preffix))
+                self._run_episode()
+
+            pbar.colour = "white"
+            pbar.set_description("{}Training agent".format(preffix))
             if self._can_update_policy():
                 policy_loss = self._gradient_ascent(noise_index=step)
 
@@ -320,14 +406,21 @@ class PolicyGradient:
 
                 # run episode to log metrics
                 if step % logging_period == 0:
+                    pbar.colour = "blue"
+                    pbar.set_description("{}Logging metrics".format(preffix))
                     metrics = self._run_episode()
                     self._plot_metrics(
                         metrics, plot_index=int(step / logging_period), test=False
                     )
+                    metrics.pop("rewards")
+
+                pbar.set_postfix(self._tqdm_postfix_dict(metrics, valid_metrics))
 
                 # validation step
                 if valid_env and step % valid_period == 0:
-                    self.test(
+                    pbar.colour = "yellow"
+                    pbar.set_description("{}Validating agent".format(preffix))
+                    valid_metrics = self.test(
                         valid_env,
                         gradient_steps=valid_gradient_steps,
                         use_train_buffer=valid_use_train_buffer,
@@ -340,6 +433,15 @@ class PolicyGradient:
                         optimizer=valid_optimizer,
                         plot_index=int(step / valid_period),
                     )
+                    valid_metrics.pop("rewards")
+                
+                pbar.set_postfix(self._tqdm_postfix_dict(metrics, valid_metrics))
+
+            if step == steps:
+                pbar.colour = "green" 
+                pbar.set_description("{}Completed".format(preffix))
+
+        return metrics, valid_metrics
 
     def _setup_test(
         self,
@@ -454,6 +556,9 @@ class PolicyGradient:
 
         Note:
             To disable online learning, set learning rate to 0 or a very big batch size.
+
+        Returns:
+            Dictionary with episode metrics.
         """
         self._setup_test(
             env,
@@ -477,6 +582,8 @@ class PolicyGradient:
         if plot_index is not None:
             self._plot_metrics(metrics, plot_index, test=True)
 
+        return metrics
+
     def _gradient_ascent(
         self, test=False, noise_index=None, update_rb=True, update_pvm=False
     ):
@@ -484,12 +591,10 @@ class PolicyGradient:
 
         Args:
             test: If true, it uses the test dataloader and policy.
-            noise_index: Index value to be used in case of a callable as noise
-                value.
-            update_rb: If True, replay buffers will be updated after gradient
-                ascent.
-            update_pvm: If True, portfolio vector memories will be updated
-                after gradient ascent.
+            noise_index: Index value to be used in case of a callable as noise value.
+            update_rb: If True, replay buffers will be updated after gradient ascent.
+            update_pvm: If True, portfolio vector memories will be updated after 
+                gradient ascent.
 
         Returns:
             Negative of policy loss (since it's gradient ascent).
@@ -557,8 +662,8 @@ class PolicyGradient:
 
         Args:
             test: If True, it uses the test parameters.
-            end_of_episode: If True, it checks the conditions of the last
-                update of an episode.
+            end_of_episode: If True, it checks the conditions of the last update of
+                an episode.
 
         Returns:
             True if policy update can happen.
