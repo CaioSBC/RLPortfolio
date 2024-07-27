@@ -56,7 +56,6 @@ def apply_action_noise(actions, epsilon=0):
     Returns:
         New batch of actions with applied noise.
     """
-    # print("=======")
     if epsilon > 0:
         eps = 1e-7  # small value to avoid infinite numbers in log function
         log_actions = torch.log(actions + eps)
