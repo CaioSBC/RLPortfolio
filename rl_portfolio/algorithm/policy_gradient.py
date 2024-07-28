@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from rl_portfolio.architecture import EIIE
+from rl_portfolio.policy import EIIE
 from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
