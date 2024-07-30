@@ -584,6 +584,8 @@ class PolicyGradient:
         if plot_index is not None:
             self._plot_metrics(metrics, plot_index, test=True)
 
+        # remove rewards list from metrics
+        metrics.pop("rewards")
         return metrics
 
     def _gradient_ascent(

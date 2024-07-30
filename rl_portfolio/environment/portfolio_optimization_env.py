@@ -119,7 +119,7 @@ class PortfolioOptimizationEnv(gym.Env):
             time_format: Formatting string of time column (if format string is invalid,
                 an error will be raised). If None, time column will not be transformed
                 to datetime.
-            tic_name: Name of the dataframe's column that contain ticker symbols.
+            tic_column: Name of the dataframe's column that contain ticker symbols.
             tics_in_portfolio: List of ticker symbols to be considered as part of the
                 portfolio. If "all", all tickers of input data are considered.
             time_window: Size of time window.
@@ -133,6 +133,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._time_column = time_column
         self._time_format = time_format
         self._tic_column = tic_column
+        self._tics_in_portfolio = tics_in_portfolio
         self._df = df
         self._initial_amount = initial_amount
         self._state_normalization = state_normalization
@@ -154,14 +155,14 @@ class PortfolioOptimizationEnv(gym.Env):
         self._df_price_variation = None
 
         # preprocess data
-        self._preprocess_data(order_df, data_normalization, tics_in_portfolio)
+        self._preprocess_data(order_df, data_normalization)
 
         # dims and spaces
         self._tic_list = self._df[self._tic_column].unique()
         self.portfolio_size = (
             len(self._tic_list)
-            if tics_in_portfolio == "all"
-            else len(tics_in_portfolio)
+            if self._tics_in_portfolio == "all"
+            else len(self._tics_in_portfolio)
         )
         action_space = 1 + self.portfolio_size
 
@@ -412,7 +413,7 @@ class PortfolioOptimizationEnv(gym.Env):
         else:
             print("No normalization was performed.")
 
-    def _preprocess_data(self, order, normalize, tics_in_portfolio):
+    def _preprocess_data(self, order, normalize):
         """Orders and normalizes the environment's dataframe.
 
         Args:
@@ -422,8 +423,6 @@ class PortfolioOptimizationEnv(gym.Env):
                 Possible values are "by_previous_time", "by_fist_time_window_value",
                 "by_COLUMN_NAME" (where COLUMN_NAME must be changed to a real column
                 name) and a custom function. If None no normalization is done.
-            tics_in_portfolio: List of ticker symbols to be considered as part of the
-                portfolio. If "all", all tickers of input data are considered.
         """
         # order time dataframe by tic and time
         if order:
@@ -431,9 +430,9 @@ class PortfolioOptimizationEnv(gym.Env):
         # defining price variation after ordering dataframe
         self._df_price_variation = self._temporal_variation_df()
         # select only stocks in portfolio
-        if tics_in_portfolio != "all":
+        if self._tics_in_portfolio != "all":
             self._df_price_variation = self._df_price_variation[
-                self._df_price_variation[self._tic_column].isin(tics_in_portfolio)
+                self._df_price_variation[self._tic_column].isin(self._tics_in_portfolio)
             ]
         # apply normalization
         if normalize:
@@ -498,9 +497,14 @@ class PortfolioOptimizationEnv(gym.Env):
             plt.close()
 
             actions = np.array(self._actions_memory)
+            tic_list = (
+                self._tic_list
+                if self._tics_in_portfolio == "all"
+                else self._tics_in_portfolio
+            )
             df_actions = pd.DataFrame(
                 actions,
-                columns=np.append("Cash", self._tic_list),
+                columns=np.append("Cash", tic_list),
             )
 
             legend_items = list(df_actions)
