@@ -435,7 +435,8 @@ class PolicyGradient:
                         optimizer=val_optimizer,
                         plot_index=int(step / val_period),
                     )
-                    val_metrics.pop("rewards")
+                    if "rewards" in val_metrics:
+                        val_metrics.pop("rewards")
 
                     pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
 
@@ -585,7 +586,8 @@ class PolicyGradient:
             self._plot_metrics(metrics, plot_index, test=True)
 
         # remove rewards list from metrics
-        metrics.pop("rewards")
+        if "rewards" in metrics:
+            metrics.pop("rewards")
         return metrics
 
     def _gradient_ascent(
