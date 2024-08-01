@@ -1,6 +1,17 @@
+from __future__ import annotations
+
+import pandas as pd
+
 from sklearn.base import BaseEstimator
 from sklearn.base import TransformerMixin
-from sklearn.preprocessing import MaxAbsScaler
+from sklearn.preprocessing import (
+    MaxAbsScaler,
+    MinMaxScaler,
+    StandardScaler,
+    RobustScaler,
+)
+from typing import Any
+
 
 class GroupByScaler(BaseEstimator, TransformerMixin):
     """Sklearn-like scaler that scales considering groups of data.
@@ -10,7 +21,15 @@ class GroupByScaler(BaseEstimator, TransformerMixin):
     data for each ticker independently.
     """
 
-    def __init__(self, by, scaler=MaxAbsScaler, columns=None, scaler_kwargs=None):
+    def __init__(
+        self,
+        by: str,
+        scaler: type[
+            MaxAbsScaler | MinMaxScaler | StandardScaler | RobustScaler
+        ] = MaxAbsScaler,
+        columns: list[str] | None = None,
+        scaler_kwargs: dict[str, Any] = None,
+    ) -> GroupByScaler:
         """Initializes GoupBy scaler.
 
         Args:
@@ -25,7 +44,7 @@ class GroupByScaler(BaseEstimator, TransformerMixin):
         self.columns = columns
         self.scaler_kwargs = {} if scaler_kwargs is None else scaler_kwargs
 
-    def fit(self, X, y=None):
+    def fit(self, X: pd.DataFrame, y: Any = None) -> GroupByScaler:
         """Fits the scaler to input data.
 
         Args:
@@ -44,7 +63,7 @@ class GroupByScaler(BaseEstimator, TransformerMixin):
             self.scalers[value] = self.scaler(**self.scaler_kwargs).fit(X_group)
         return self
 
-    def transform(self, X, y=None):
+    def transform(self, X: pd.DataFrame, y: Any = None) -> pd.DataFrame:
         """Transforms unscaled data.
 
         Args:
