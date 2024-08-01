@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import numpy as np
 
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
+
+from typing import Any
 
 
 class GeometricReplayBuffer(SequentialReplayBuffer):
@@ -11,7 +15,9 @@ class GeometricReplayBuffer(SequentialReplayBuffer):
     will favor more recent data.
     """
 
-    def sample(self, batch_size, sample_bias=1.0, from_start=False):
+    def sample(
+        self, batch_size: int, sample_bias: float = 1.0, from_start: bool = False
+    ) -> list[Any]:
         """Samples a sequence of specified size from the replay buffer. The
         sampling method will select the first item of the sequence following
         a geometric distribution, which, depending on the from_start argument,

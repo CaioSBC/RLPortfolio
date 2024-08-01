@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 import numpy as np
+
+from typing import Any
 
 
 class SequentialReplayBuffer:
@@ -8,7 +12,7 @@ class SequentialReplayBuffer:
     experiences will be randomly chosen.
     """
 
-    def __init__(self, capacity):
+    def __init__(self, capacity: int) -> SequentialReplayBuffer:
         """Initializes the replay buffer.
 
         Args:
@@ -17,7 +21,7 @@ class SequentialReplayBuffer:
         self.capacity = capacity
         self.reset()
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Represents the size of the buffer.
 
         Returns:
@@ -25,7 +29,7 @@ class SequentialReplayBuffer:
         """
         return len(self.buffer)
 
-    def add(self, experience):
+    def add(self, experience: Any) -> None:
         """Add experience to buffer. When buffer is full, it overwrites
         experiences in the beginning.
 
@@ -40,7 +44,9 @@ class SequentialReplayBuffer:
                 0 if self.position == self.capacity - 1 else self.position + 1
             )
 
-    def update_value(self, value, position, attr_or_index=None):
+    def update_value(
+        self, value: Any, position: int, attr_or_index: int | str | None = None
+    ) -> None:
         """Updates the value of the item in a specific position of the
         replay buffer.
 
@@ -75,7 +81,7 @@ class SequentialReplayBuffer:
                     else:
                         self.buffer[pos][attr_or_index] = val
 
-    def sample(self, batch_size):
+    def sample(self, batch_size: int) -> list[Any]:
         """Randomly samples a sequence of specified size from the replay buffer.
 
         Returns:
@@ -87,7 +93,7 @@ class SequentialReplayBuffer:
         sample = self.buffer[rand : rand + batch_size]
         return sample
 
-    def reset(self):
+    def reset(self) -> None:
         """Resets the replay buffer."""
         self.buffer = []
         self.position = 0
