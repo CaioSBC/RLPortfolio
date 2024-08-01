@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from pathlib import Path
+from typing import Any, Callable
 
 try:
     import quantstats as qs
@@ -65,26 +66,26 @@ class PortfolioOptimizationEnv(gym.Env):
 
     def __init__(
         self,
-        df,
-        initial_amount,
-        order_df=True,
-        return_last_action=False,
-        data_normalization=None,
-        state_normalization=None,
-        reward_scaling=1,
-        comission_fee_model="trf",
-        comission_fee_pct=0,
-        features=["close", "high", "low"],
-        valuation_feature="close",
-        time_column="date",
-        time_format=None,
-        tic_column="tic",
-        tics_in_portfolio="all",
-        time_window=1,
-        print_metrics=True,
-        plot_graphs=True,
-        cwd="./",
-    ):
+        df: pd.DataFrame,
+        initial_amount: float,
+        order_df: bool = True,
+        return_last_action: bool = False,
+        data_normalization: str | None = None,
+        state_normalization: str | None = None,
+        reward_scaling: float = 1,
+        comission_fee_model: str = "trf",
+        comission_fee_pct: float = 0,
+        features: list[str] = ["close", "high", "low"],
+        valuation_feature: str = "close",
+        time_column: str = "date",
+        time_format: str | None = None,
+        tic_column: str = "tic",
+        tics_in_portfolio: str | list[str] = "all",
+        time_window: int = 1,
+        print_metrics: bool = True,
+        plot_graphs: bool = True,
+        cwd: str = "./",
+    ) -> PortfolioOptimizationEnv:
         """Initializes environment's instance.
 
         Args:
@@ -204,7 +205,9 @@ class PortfolioOptimizationEnv(gym.Env):
         self._portfolio_value = self._initial_amount
         self._terminal = False
 
-    def reset(self, seed=None, options=None):
+    def reset(
+        self, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[np.ndarray | dict[str, np.ndarray], dict[str, Any]]:
         """Resets the environment and returns it to its initial state (the
         fist date of the dataframe).
 
@@ -236,7 +239,9 @@ class PortfolioOptimizationEnv(gym.Env):
 
         return self._observation, self._info
 
-    def step(self, action):
+    def step(
+        self, action: list[float] | np.ndarray
+    ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
         """Performs a simulation step.
 
         Args:
@@ -340,7 +345,7 @@ class PortfolioOptimizationEnv(gym.Env):
 
         return self._observation, self._reward, self._terminal, False, self._info
 
-    def render(self, mode="human"):
+    def render(self, mode: str = "human") -> np.ndarray | dict[str, np.ndarray]:
         """Renders the environment.
 
         Returns:
@@ -348,7 +353,7 @@ class PortfolioOptimizationEnv(gym.Env):
         """
         return self._observation
 
-    def enumerate_portfolio(self):
+    def enumerate_portfolio(self) -> None:
         """Enumerates the current porfolio by showing the ticker symbols
         of all the investments considered in the portfolio.
         """
@@ -356,7 +361,7 @@ class PortfolioOptimizationEnv(gym.Env):
         for index, tic in enumerate(self._tic_list):
             print(f"Index: {index + 1}. Tic: {tic}")
 
-    def _temporal_variation_df(self, periods=1):
+    def _temporal_variation_df(self, periods: int = 1) -> pd.DataFrame:
         """Calculates the temporal variation dataframe. For each feature, this
         dataframe contains the rate of the current feature's value and the last
         feature's value given a period. It's used to normalize the dataframe.
@@ -385,7 +390,9 @@ class PortfolioOptimizationEnv(gym.Env):
         )
         return df_temporal_variation
 
-    def _normalize_dataframe(self, normalize):
+    def _normalize_dataframe(
+        self, normalize: str | Callable[[pd.DataFrame], pd.DataFrame] | None
+    ) -> None:
         """ "Normalizes the environment's dataframe.
 
         Args:
@@ -413,7 +420,7 @@ class PortfolioOptimizationEnv(gym.Env):
         else:
             print("No normalization was performed.")
 
-    def _preprocess_data(self, order, normalize):
+    def _preprocess_data(self, order: bool, normalize: str | None) -> None:
         """Orders and normalizes the environment's dataframe.
 
         Args:
@@ -451,7 +458,7 @@ class PortfolioOptimizationEnv(gym.Env):
             self._features
         ].astype("float32")
 
-    def _terminal_routine(self):
+    def _terminal_routine(self) -> None:
         """Executes terminal routine (prints and plots). This function also adds a
         "metrics" key to "_info" attribute with the episode's simulation metrics.
         """
@@ -569,18 +576,21 @@ class PortfolioOptimizationEnv(gym.Env):
             )
             print("=================================")
 
-    def _softmax_normalization(self, actions):
+    def _softmax_normalization(self, action: np.ndarray) -> np.ndarray:
         """Normalizes the action vector using softmax function.
+
+        Args:
+            action: Action vector.
 
         Returns:
             Normalized action vector (portfolio vector).
         """
-        numerator = np.exp(actions)
-        denominator = np.sum(np.exp(actions))
+        numerator = np.exp(action)
+        denominator = np.sum(np.exp(action))
         softmax_output = numerator / denominator
         return softmax_output
 
-    def _normalize_state(self, state):
+    def _normalize_state(self, state: np.ndarray) -> np.ndarray:
         """Applies a normalization method to the state matrix.
 
         Args:
@@ -613,7 +623,9 @@ class PortfolioOptimizationEnv(gym.Env):
             norm_state = self._state_normalization(state)
         return norm_state
 
-    def _generate_observation(self, state):
+    def _generate_observation(
+        self, state: np.ndarray
+    ) -> np.ndarray | dict[str, np.ndarray]:
         """Generate observation given the observation space. If "return_last_action"
         is set to False, a three-dimensional box is returned. If it's set to True, a
         dictionary is returned. The dictionary follows the standard below::
@@ -629,7 +641,9 @@ class PortfolioOptimizationEnv(gym.Env):
         else:
             return state
 
-    def _generate_observation_and_info(self, time_index):
+    def _generate_observation_and_info(
+        self, time_index: int
+    ) -> tuple[np.ndarray | dict[str, np.ndarray], dict[str, Any]]:
         """Generates observation and information given a time index. It also updates
         "_data" and "_price_variations" attributes with information about the current
         simulation step.
@@ -697,7 +711,9 @@ class PortfolioOptimizationEnv(gym.Env):
         }
         return self._generate_observation(self._normalize_state(state)), info
 
-    def _apply_wvm_fee(self, weights, last_weights):
+    def _apply_wvm_fee(
+        self, weights: np.ndarray, last_weights: np.ndarray
+    ) -> tuple[np.ndarray, float]:
         """Applies weights vector modifier fee model.
 
         Args:
@@ -721,7 +737,9 @@ class PortfolioOptimizationEnv(gym.Env):
             new_weights = portfolio / new_portfolio_value  # new weights
             return new_weights, new_portfolio_value
 
-    def _apply_trf_fee(self, weights, last_weights):
+    def _apply_trf_fee(
+        self, weights: np.ndarray, last_weights: np.ndarray
+    ) -> tuple[float, float]:
         """Applies transaction remainder factor fee model.
 
         Args:
@@ -744,7 +762,9 @@ class PortfolioOptimizationEnv(gym.Env):
         new_portfolio_value = mu * self._portfolio_value
         return mu, new_portfolio_value
 
-    def _apply_trf_approx_fee(self, weights, last_weights):
+    def _apply_trf_approx_fee(
+        self, weights: np.ndarray, last_weights: np.ndarray
+    ) -> tuple[float, float]:
         """Applies an approximate version of transaction remainder factor
         fee model. This version is faster and the difference between the
         approximate value and the true value is O(c^2), where c is the
@@ -763,7 +783,7 @@ class PortfolioOptimizationEnv(gym.Env):
         new_portfolio_value = mu * self._portfolio_value
         return mu, new_portfolio_value
 
-    def _reset_memory(self):
+    def _reset_memory(self) -> None:
         """Resets the environment's memory."""
         date_time = self._sorted_times[self._time_index]
         # memorize portfolio value each step
@@ -785,7 +805,7 @@ class PortfolioOptimizationEnv(gym.Env):
         # memorize datetimes
         self._date_memory = [date_time]
 
-    def _seed(self, seed=None):
+    def _seed(self, seed: int | None = None) -> list[int | None]:
         """Seeds the sources of randomness of this environment to guarantee
         reproducibility.
 
