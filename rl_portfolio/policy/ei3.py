@@ -1,19 +1,21 @@
-import numpy as np
+from __future__ import annotations
+
 import torch
+
 from torch import nn
 
 
 class EI3(nn.Module):
     def __init__(
         self,
-        initial_features=3,
-        k_short=3,
-        k_medium=21,
-        conv_mid_features=3,
-        conv_final_features=20,
-        time_window=50,
-        device="cpu",
-    ):
+        initial_features: int = 3,
+        k_short: int = 3,
+        k_medium: int = 21,
+        conv_mid_features: int = 3,
+        conv_final_features: int = 20,
+        time_window: int = 50,
+        device: str = "cpu",
+    ) -> EI3:
         """EI3 (ensemble of identical independent inception) policy network
         initializer.
 
@@ -81,7 +83,9 @@ class EI3(nn.Module):
 
         self.softmax = nn.Sequential(nn.Softmax(dim=-1))
 
-    def forward(self, observation, last_action):
+    def forward(
+        self, observation: torch.Tensor, last_action: torch.Tensor
+    ) -> torch.Tensor:
         """Policy network's forward propagation. Defines a most favorable
         action of this policy given the inputs.
 
@@ -114,7 +118,9 @@ class EI3(nn.Module):
 
         return output
 
-    def _process_last_action(self, last_action):
+    def _process_last_action(
+        self, last_action: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Process the last action to retrieve cash bias and last stocks.
 
         Args:

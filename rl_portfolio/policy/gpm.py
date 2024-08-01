@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 import torch
 from torch import nn
@@ -11,19 +13,19 @@ from torch_geometric.utils import to_dense_batch
 class GPM(nn.Module):
     def __init__(
         self,
-        edge_index,
-        edge_type,
-        nodes_to_select,
-        initial_features=3,
-        k_short=3,
-        k_medium=21,
-        conv_mid_features=3,
-        conv_final_features=20,
-        graph_layers=1,
-        time_window=50,
-        softmax_temperature=1,
-        device="cpu",
-    ):
+        edge_index: np.ndarray | torch.Tensor,
+        edge_type: np.ndarray,
+        nodes_to_select: np.ndarray | list[int] | torch.Tensor,
+        initial_features: int = 3,
+        k_short: int = 3,
+        k_medium: int = 21,
+        conv_mid_features: int = 3,
+        conv_final_features: int = 20,
+        graph_layers: int = 1,
+        time_window: int = 50,
+        softmax_temperature: float = 1,
+        device: str = "cpu",
+    ) -> GPM:
         """GPM (Graph-based Portfolio Management) policy network initializer.
 
         Args:
@@ -126,7 +128,9 @@ class GPM(nn.Module):
 
         self.softmax = nn.Sequential(nn.Softmax(dim=-1))
 
-    def forward(self, observation, last_action):
+    def forward(
+        self, observation: torch.Tensor, last_action: torch.Tensor
+    ) -> torch.Tensor:
         """Policy network's forward propagation. Defines a most favorable
         action of this policy given the inputs.
 
@@ -194,7 +198,9 @@ class GPM(nn.Module):
 
         return output
 
-    def _process_last_action(self, last_action):
+    def _process_last_action(
+        self, last_action: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Process the last action to retrieve cash bias and last stocks.
 
         Args:
@@ -209,7 +215,9 @@ class GPM(nn.Module):
         cash_bias = last_action[:, 0].reshape((batch_size, 1, 1, 1))
         return last_stocks, cash_bias
 
-    def _create_graph_batch(self, features, edge_index):
+    def _create_graph_batch(
+        self, features: torch.Tensor, edge_index: torch.Tensor
+    ) -> Batch:
         """Create a batch of graphs with the features.
 
         Args:
@@ -228,7 +236,9 @@ class GPM(nn.Module):
             graphs.append(new_graph)
         return Batch.from_data_list(graphs)
 
-    def _create_edge_type_for_batch(self, batch, edge_type):
+    def _create_edge_type_for_batch(
+        self, batch: Batch, edge_type: torch.Tensor
+    ) -> torch.Tensor:
         """Create the edge type tensor for a batch of graphs.
 
         Args:

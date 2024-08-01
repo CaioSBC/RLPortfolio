@@ -1,4 +1,5 @@
-import numpy as np
+from __future__ import annotations
+
 import torch
 from torch import nn
 
@@ -6,13 +7,13 @@ from torch import nn
 class EIIE(nn.Module):
     def __init__(
         self,
-        initial_features=3,
-        k_size=3,
-        conv_mid_features=2,
-        conv_final_features=20,
-        time_window=50,
-        device="cpu",
-    ):
+        initial_features: int = 3,
+        k_size: int = 3,
+        conv_mid_features: int = 2,
+        conv_final_features: int = 20,
+        time_window: int = 50,
+        device: str = "cpu",
+    ) -> EIIE:
         """Convolutional EIIE (ensemble of identical independent evaluators) policy
         network initializer.
 
@@ -58,7 +59,9 @@ class EIIE(nn.Module):
 
         self.softmax = nn.Sequential(nn.Softmax(dim=-1))
 
-    def forward(self, observation, last_action):
+    def forward(
+        self, observation: torch.Tensor, last_action: torch.Tensor
+    ) -> torch.Tensor:
         """Policy network's forward propagation. Defines a most favorable
         action of this policy given the inputs.
 
@@ -90,7 +93,9 @@ class EIIE(nn.Module):
 
         return output
 
-    def _process_last_action(self, last_action):
+    def _process_last_action(
+        self, last_action: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Process the last action to retrieve cash bias and last stocks.
 
         Args:
@@ -109,14 +114,14 @@ class EIIE(nn.Module):
 class EIIERecurrent(nn.Module):
     def __init__(
         self,
-        initial_features=3,
-        rec_type="rnn",
-        rec_num_layers=20,
-        rec_nonlinearity="tanh",
-        rec_final_features=20,
-        portfolio_size=11,
-        device="cpu",
-    ):
+        initial_features: int = 3,
+        rec_type: str = "rnn",
+        rec_num_layers: int = 20,
+        rec_nonlinearity: str = "tanh",
+        rec_final_features: int = 20,
+        portfolio_size: int = 11,
+        device: str = "cpu",
+    ) -> EIIERecurrent:
         """Recurrent EIIE (ensemble of identical independent evaluators) policy
         network initializer.
 
@@ -171,7 +176,9 @@ class EIIERecurrent(nn.Module):
 
         self.softmax = nn.Sequential(nn.Softmax(dim=-1))
 
-    def forward(self, observation, last_action):
+    def forward(
+        self, observation: torch.Tensor, last_action: torch.Tensor
+    ) -> torch.Tensor:
         """Policy network's forward propagation. Defines a most favorable
         action of this policy given the inputs.
 
@@ -224,7 +231,9 @@ class EIIERecurrent(nn.Module):
 
         return output
 
-    def _process_last_action(self, last_action):
+    def _process_last_action(
+        self, last_action: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Process the last action to retrieve cash bias and last stocks.
 
         Args:
