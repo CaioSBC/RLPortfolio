@@ -2,21 +2,30 @@ from __future__ import annotations
 
 import copy
 import torch
+import numpy as np
+
+from collections.abc import Iterator
+from typing import Any
 
 from torch.utils.data.dataset import IterableDataset
 
-from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
+from rl_portfolio.algorithm.buffers import GeometricReplayBuffer, SequentialReplayBuffer
 from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 
 
 class RLDataset(IterableDataset):
-    def __init__(self, buffer, batch_size, sample_bias=1.0, from_start=False):
+    def __init__(
+        self,
+        buffer: SequentialReplayBuffer,
+        batch_size: int,
+        sample_bias: float = 1.0,
+        from_start: bool = False,
+    ) -> RLDataset:
         """Initializes reinforcement learning dataset.
 
         Args:
             buffer: replay buffer to become iterable dataset.
-            batch_size: Sample batch size. Not used if buffer is
-                SequentialReplayBuffer.
+            batch_size: Sample batch size.
             sample_bias: Probability of success of a trial in a geometric
                 distribution. Only used if buffer is GeometricReplayBuffer.
             from_start: If True, will choose a sequence starting from the
@@ -32,7 +41,7 @@ class RLDataset(IterableDataset):
         self.sample_bias = sample_bias
         self.from_start = from_start
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         """Iterates over RLDataset.
 
         Returns:
@@ -46,7 +55,7 @@ class RLDataset(IterableDataset):
             yield from self.buffer.sample(self.batch_size)
 
 
-def apply_action_noise(actions, epsilon=0):
+def apply_action_noise(actions: torch.Tensor, epsilon: float = 0) -> torch.Tensor:
     """Apply noise to portfolio distribution considering its constraints.
 
     Arg:
@@ -77,7 +86,9 @@ def apply_action_noise(actions, epsilon=0):
 
 
 @torch.no_grad
-def apply_parameter_noise(model, epsilon=0):
+def apply_parameter_noise(
+    model: torch.nn.Module, epsilon: float = 0
+) -> torch.nn.Module:
     """Apply noise to PyTorch model. If the model is a portfolio optimization
     policy, the noise allows the agent to generate different actions and
     explore the action space.
@@ -100,7 +111,7 @@ def apply_parameter_noise(model, epsilon=0):
         return model
 
 
-def torch_to_numpy(tensor, squeeze=False):
+def torch_to_numpy(tensor: torch.Tensor, squeeze: float = False) -> np.ndarray:
     """Transforms torch tensor to numpy array.
 
     Arg:
@@ -117,7 +128,12 @@ def torch_to_numpy(tensor, squeeze=False):
     return array
 
 
-def numpy_to_torch(array, type=torch.float32, add_batch_dim=False, device="cpu"):
+def numpy_to_torch(
+    array: np.ndarray,
+    type: torch.dtype = torch.float32,
+    add_batch_dim: bool = False,
+    device: str = "cpu",
+) -> torch.Tensor:
     """Transforms numpy array to torch tensor.
 
     Arg:
@@ -134,7 +150,9 @@ def numpy_to_torch(array, type=torch.float32, add_batch_dim=False, device="cpu")
     return tensor
 
 
-def combine_replay_buffers(rb_list, new_type):
+def combine_replay_buffers(
+    rb_list: list[SequentialReplayBuffer], new_type: type[SequentialReplayBuffer]
+) -> SequentialReplayBuffer:
     """Combines multiple replay buffers and creates a new one.
 
     Args:
@@ -160,7 +178,9 @@ def combine_replay_buffers(rb_list, new_type):
     return new_rb
 
 
-def combine_portfolio_vector_memories(pvm_list, move_index=True):
+def combine_portfolio_vector_memories(
+    pvm_list: list[PortfolioVectorMemory], move_index: bool = True
+) -> PortfolioVectorMemory:
     """Combines two portfolio vector memories and creates a new one.
 
     Args:
