@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import copy
-
+import gymnasium as gym
 import numpy as np
 import torch
-from torch.optim import AdamW
+from torch.optim import AdamW, Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+from typing import Any, Callable
 
-from rl_portfolio.policy import EIIE
+from rl_portfolio.policy import EIIE, EIIERecurrent, EI3, GPM
 from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
@@ -39,21 +40,22 @@ class PolicyGradient:
 
     def __init__(
         self,
-        env,
-        policy=EIIE,
-        policy_kwargs=None,
-        replay_buffer=GeometricReplayBuffer,
-        batch_size=100,
-        sample_bias=1.0,
-        sample_from_start=False,
-        lr=1e-3,
-        action_noise=0,
-        parameter_noise=0,
-        optimizer=AdamW,
-        use_tensorboard=False,
-        summary_writer_kwargs=None,
-        device="cpu",
-    ):
+        env: gym.Env,
+        policy: type[EIIE | EIIERecurrent | EI3 | GPM] = EIIE,
+        policy_kwargs: dict[str, Any] = None,
+        replay_buffer: type[SequentialReplayBuffer] = GeometricReplayBuffer,
+        batch_size: int = 100,
+        sample_bias: float = 1.0,
+        sample_from_start: bool = False,
+        lr: float = 1e-3,
+        action_epsilon: float | Callable[[int], float] = 0,
+        action_gamma: float | Callable[[int], float] = 0,
+        parameter_noise: float | Callable[[int], float] = 0,
+        optimizer: type[Optimizer] = AdamW,
+        use_tensorboard: bool = False,
+        summary_writer_kwargs: dict[str, Any] = None,
+        device: str = "cpu",
+    ) -> PolicyGradient:
         """Initializes Policy Gradient for portfolio optimization.
 
         Args:
@@ -71,10 +73,14 @@ class PolicyGradient:
                 of the buffer. Otherwise, it will start from the end. Only used if
                 buffer is GeometricReplayBuffer.
             lr: policy neural network learning rate.
-            action_noise: Noise parameter (bigger than or equal to 0) to be applied to
-                performed actions during training. It can be a value or a function whose
-                argument is the number of training episodes/steps and that outputs the
-                noise value.
+            action_epsilon: Noise logarithmic parameter (bigger than or equal to 0) to be
+                applied to performed actions during training. It can be a value or a
+                function whose argument is the number of training episodes/steps and that
+                outputs the noise value.
+            action_gamma: Noise distributional parameter (bigger than or equal to 0) to be
+                applied to performed actions during training. It can be a value or a
+                function whose argument is the number of training episodes/steps and that
+                outputs the noise value.
             parameter_noise: Noise parameter (bigger than or equal to 0) to be applied
                 to the parameters of the policy network during training. It can be a
                 value or a function whose argument is the number of training episodes/
@@ -91,7 +97,8 @@ class PolicyGradient:
         self.sample_bias = sample_bias
         self.sample_from_start = sample_from_start
         self.lr = lr
-        self.action_noise = action_noise
+        self.action_epsilon = action_epsilon
+        self.action_gamma = action_gamma
         self.parameter_noise = parameter_noise
         self.replay_buffer = replay_buffer
         self.optimizer = optimizer
@@ -121,7 +128,7 @@ class PolicyGradient:
 
         self._setup_train(env)
 
-    def _setup_train(self, env):
+    def _setup_train(self, env: gym.Env):
         """Initializes algorithm before training.
 
         Args:
@@ -620,16 +627,26 @@ class PolicyGradient:
             actions = self.test_policy(obs, last_actions)
         else:
             # define action noise.
-            if callable(self.action_noise):
+            if callable(self.action_epsilon):
                 if noise_index is None:
                     raise TypeError(
-                        "Noise index parameter of callable action noise is None."
+                        "Noise index parameter of callable action noise epsilon is None."
                     )
-                action_noise = self.action_noise(noise_index)
+                action_epsilon = self.action_epsilon(noise_index)
             else:
-                action_noise = self.action_noise
+                action_epsilon = self.action_epsilon
+            if callable(self.action_gamma):
+                if noise_index is None:
+                    raise TypeError(
+                        "Noise index parameter of callable action noise gamma is None."
+                    )
+                action_gamma = self.action_gamma(noise_index)
+            else:
+                action_gamma = self.action_gamma
             actions = apply_action_noise(
-                self.train_policy(obs, last_actions), epsilon=action_noise
+                self.train_policy(obs, last_actions),
+                epsilon=action_epsilon,
+                gamma=action_gamma,
             )
 
         # calculate comission rate and transaction remainder factor
