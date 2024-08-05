@@ -4,13 +4,14 @@ import copy
 import gymnasium as gym
 import numpy as np
 import torch
+from torch import nn
 from torch.optim import AdamW, Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from typing import Any, Callable
 
-from rl_portfolio.policy import EIIE, EIIERecurrent, EI3, GPM
+from rl_portfolio.policy import EIIE
 from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
 from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
@@ -41,7 +42,7 @@ class PolicyGradient:
     def __init__(
         self,
         env: gym.Env,
-        policy: type[EIIE | EIIERecurrent | EI3 | GPM] = EIIE,
+        policy: type[nn.Module] = EIIE,
         policy_kwargs: dict[str, Any] = None,
         replay_buffer: type[SequentialReplayBuffer] = GeometricReplayBuffer,
         batch_size: int = 100,
@@ -128,7 +129,7 @@ class PolicyGradient:
 
         self._setup_train(env)
 
-    def _setup_train(self, env: gym.Env):
+    def _setup_train(self, env: gym.Env) -> None:
         """Initializes algorithm before training.
 
         Args:
@@ -158,12 +159,12 @@ class PolicyGradient:
 
     def _run_episode(
         self,
-        test=False,
-        gradient_steps=0,
-        initial_index=0,
-        noise_index=None,
-        plot_loss_index=None,
-    ):
+        test: bool = False,
+        gradient_steps: int = 0,
+        initial_index: int = 0,
+        noise_index: int | None = None,
+        plot_loss_index: int | None = None,
+    ) -> dict[str, float | list[float]]:
         """Runs a full episode (the agent rolls through all the environment's data).
         At the end of each simuloation step, the agent can perform a number of gradient
         ascent operations if specified in the arguments.
@@ -251,7 +252,9 @@ class PolicyGradient:
 
         return metrics
 
-    def _tqdm_arguments(self, progress_bar, name):
+    def _tqdm_arguments(
+        self, progress_bar: str | None, name: str | None
+    ) -> tuple[str, bool, bool]:
         """Parses tqdm arguments to training progress bar.
 
         Args:
@@ -285,7 +288,9 @@ class PolicyGradient:
 
         return preffix, disable, leave
 
-    def _tqdm_postfix_dict(self, metrics, val_metrics):
+    def _tqdm_postfix_dict(
+        self, metrics: dict[str, Any], val_metrics: dict[str, Any]
+    ) -> dict[str, float]:
         """Create tqdm postfix dictionary to print in progress bar.
 
         Args:
@@ -309,21 +314,21 @@ class PolicyGradient:
 
     def train(
         self,
-        steps,
-        logging_period=None,
-        val_period=None,
-        val_env=None,
-        val_gradient_steps=1,
-        val_use_train_buffer=True,
-        val_replay_buffer=None,
-        val_batch_size=None,
-        val_sample_bias=None,
-        val_sample_from_start=None,
-        val_lr=None,
-        val_optimizer=None,
-        progress_bar="permanent",
-        name=None,
-    ):
+        steps: int,
+        logging_period: int | None = None,
+        val_period: int | None = None,
+        val_env: gym.Env | None = None,
+        val_gradient_steps: int = 1,
+        val_use_train_buffer: bool = True,
+        val_replay_buffer: type[SequentialReplayBuffer] | None = None,
+        val_batch_size: int | None = None,
+        val_sample_bias: float | None = None,
+        val_sample_from_start: bool | None = None,
+        val_lr: float | None = None,
+        val_optimizer: type[Optimizer] | None = None,
+        progress_bar: str | None = "permanent",
+        name: str | None = None,
+    ) -> tuple[dict[str, float] | None, dict[str, float] | None]:
         """Training sequence. Initially, the algorithm runs a full episode without
         any training in order to full replay buffers. Then, several training steps
         are executed using data from the replay buffer in order to maximize the
@@ -455,16 +460,16 @@ class PolicyGradient:
 
     def _setup_test(
         self,
-        env,
-        use_train_buffer,
-        policy,
-        replay_buffer,
-        batch_size,
-        sample_bias,
-        sample_from_start,
-        lr,
-        optimizer,
-    ):
+        env: gym.Env,
+        use_train_buffer: bool,
+        policy: nn.Module,
+        replay_buffer: type[SequentialReplayBuffer],
+        batch_size: int,
+        sample_bias: float,
+        sample_from_start: bool,
+        lr: float,
+        optimizer: type[Optimizer],
+    ) -> None:
         """Initializes algorithm before testing.
 
         Args:
@@ -520,18 +525,18 @@ class PolicyGradient:
 
     def test(
         self,
-        env,
-        gradient_steps=1,
-        use_train_buffer=False,
-        policy=None,
-        replay_buffer=None,
-        batch_size=None,
-        sample_bias=None,
-        sample_from_start=None,
-        lr=None,
-        optimizer=None,
-        plot_index=None,
-    ):
+        env: gym.Env,
+        gradient_steps: int = 1,
+        use_train_buffer: bool = False,
+        policy: nn.Module | None = None,
+        replay_buffer: SequentialReplayBuffer | None = None,
+        batch_size: int | None = None,
+        sample_bias: float | None = None,
+        sample_from_start: bool | None = None,
+        lr: float = None,
+        optimizer: type[Optimizer] | None = None,
+        plot_index: int | None = None,
+    ) -> dict[str, float]:
         """Tests the policy with online learning. The test sequence runs an episode of
         the environment and performs gradient_step training steps after each simulation
         step in order to perform online learning. To disable online learning, set gradient
@@ -598,8 +603,12 @@ class PolicyGradient:
         return metrics
 
     def _gradient_ascent(
-        self, test=False, noise_index=None, update_rb=True, update_pvm=False
-    ):
+        self,
+        test: bool = False,
+        noise_index: int | None = None,
+        update_rb: bool = True,
+        update_pvm: bool = False,
+    ) -> float:
         """Performs the gradient ascent step in the policy gradient algorithm.
 
         Args:
@@ -680,7 +689,9 @@ class PolicyGradient:
 
         return -policy_loss
 
-    def _can_update_policy(self, test=False, end_of_episode=False):
+    def _can_update_policy(
+        self, test: bool = False, end_of_episode: bool = False
+    ) -> bool:
         """Check if the conditions that allow a policy update are met.
 
         Args:
@@ -703,7 +714,14 @@ class PolicyGradient:
             return True
         return False
 
-    def _update_buffers(self, actions, indexes, test, update_rb=True, update_pvm=False):
+    def _update_buffers(
+        self,
+        actions: torch.Tensor,
+        indexes: torch.Tensor,
+        test: bool,
+        update_rb: bool = True,
+        update_pvm: bool = False,
+    ) -> None:
         """Updates the portfolio vector memory and the replay buffers considering the
         actions taken during gradient ascent.
 
@@ -742,7 +760,7 @@ class PolicyGradient:
                 # update replay buffer last action value
                 self.train_buffer.update_value(actions, indexes, 1)
 
-    def _plot_loss(self, loss, plot_index):
+    def _plot_loss(self, loss: float, plot_index: int) -> None:
         """Plots the policy loss in tensorboard.
 
         Args:
@@ -752,7 +770,9 @@ class PolicyGradient:
         if self.summary_writer:
             self.summary_writer.add_scalar("Loss/Train", loss, plot_index)
 
-    def _plot_metrics(self, metrics, plot_index, test):
+    def _plot_metrics(
+        self, metrics: dict[str, float], plot_index: int, test: bool
+    ) -> None:
         """Plots the metrics calculated after an episode in tensorboard.
 
         Args:

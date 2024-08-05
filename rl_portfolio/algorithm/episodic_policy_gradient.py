@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-from tqdm import tqdm
+import gymnasium as gym
 
+from tqdm import tqdm
+from torch.optim import Optimizer
+
+from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
 from rl_portfolio.algorithm.policy_gradient import PolicyGradient
 
 
@@ -23,21 +27,21 @@ class EpisodicPolicyGradient(PolicyGradient):
 
     def train(
         self,
-        episodes=100,
-        gradient_steps=1,
-        val_period=None,
-        val_env=None,
-        val_gradient_steps=1,
-        val_use_train_buffer=True,
-        val_replay_buffer=None,
-        val_batch_size=None,
-        val_sample_bias=None,
-        val_sample_from_start=None,
-        val_lr=None,
-        val_optimizer=None,
-        progress_bar="permanent",
-        name=None,
-    ):
+        episodes: int = 100,
+        gradient_steps: int = 1,
+        val_period: int | None = None,
+        val_env: gym.Env | None = None,
+        val_gradient_steps: int = 1,
+        val_use_train_buffer: bool = True,
+        val_replay_buffer: type[SequentialReplayBuffer] = None,
+        val_batch_size: int | None = None,
+        val_sample_bias: float | None = None,
+        val_sample_from_start: bool | None = None,
+        val_lr: float | None = None,
+        val_optimizer: type[Optimizer] = None,
+        progress_bar: str | None = "permanent",
+        name: str | None = None,
+    ) -> tuple[dict[str, float] | None, dict[str, float] | None]:
         """Training sequence. The algorithm runs the specified number of episodes and
         after every simulation step, a defined number of gradient ascent steps are
         performed. This episodic version of policy gradient is suitable to
