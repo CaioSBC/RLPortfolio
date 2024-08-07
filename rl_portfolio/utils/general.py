@@ -56,13 +56,17 @@ class RLDataset(IterableDataset):
 
 
 def apply_action_noise(
-    actions: torch.Tensor, epsilon: float = 0, gamma: float = 0
+    actions: torch.Tensor,
+    noise_model: str | None = None,
+    epsilon: float = 0,
+    gamma: float = 0,
 ) -> torch.Tensor:
     """Apply noise to portfolio distribution considering its constraints.
 
     Arg:
         actions: Batch of agent actions.
-        epsilon: Logarithmic noise parameter.
+        noise_model: Name of the action noise model to use.
+        epsilon: Random noise parameter.
         gamma: Distributional noise parameter.
 
     Returns:
@@ -85,7 +89,12 @@ def apply_action_noise(
                 # tensor, the bigger the probability of happening a distribution.
                 range_actions = max_actions - min_actions
                 dist_mask = torch.rand(batch_size, 1).to(device) < range_actions
-                dist_value = dist_mask * torch.rand(batch_size, 1).to(device) * max_actions * gamma
+                dist_value = (
+                    dist_mask
+                    * torch.rand(batch_size, 1).to(device)
+                    * max_actions
+                    * gamma
+                )
                 max_mask = actions == max_actions.expand_as(actions)
             # applies distribution noise to input actions
             dist_actions = (
@@ -96,24 +105,34 @@ def apply_action_noise(
         else:
             dist_actions = actions
 
-        # STEP 2: Logarithmic noise.
-        # To create action diversity, a noise is applied to the action in the logarithmic
-        # domain, so that the softmax constraints can be respected.
-        if epsilon > 0:
-            eps = 1e-7  # small value to avoid infinite numbers in log function
-            log_actions = torch.log(dist_actions + eps)
-            # noise is calculated through a normal distribution with 0 mean and
-            # std equal to the max absolute logarithmic value. Epsilon is used
-            # to control the value of std.
-            with torch.no_grad():
-                noises = torch.normal(
-                    0,
-                    torch.max(torch.abs(log_actions), dim=1, keepdim=True)[0].expand_as(
-                        log_actions
-                    )
-                    * epsilon,
-                ).to(device)
-            noisy_actions = torch.softmax(log_actions + noises, dim=1)
+        # STEP 2: Random noise.
+        # To create action diversity, a random noise is applied to actions.
+        if epsilon > 0 and noise_model is not None:
+            if noise_model == "logarithmic":
+                eps = 1e-7  # small value to avoid infinite numbers in log function
+                log_actions = torch.log(dist_actions + eps)
+                # noise is calculated through a normal distribution with 0 mean and
+                # std equal to the max absolute logarithmic value. Epsilon is used
+                # to control the value of std.
+                with torch.no_grad():
+                    noises = torch.normal(
+                        0,
+                        torch.max(torch.abs(log_actions), dim=1, keepdim=True)[0].expand_as(
+                            log_actions
+                        )
+                        * epsilon,
+                    ).to(device)
+                noisy_actions = torch.softmax(log_actions + noises, dim=1)
+            elif noise_model == "dirichlet":
+                # noise is calculated based on the dirichlet distribution. A random
+                # action tensor is created and epsilon is used to define the weight
+                # of the randomness.
+                with torch.no_grad():
+                    random_actions = torch.distributions.Dirichlet(torch.ones_like(dist_actions)).sample()
+                    noises = epsilon * (random_actions - dist_actions)
+                noisy_actions = dist_actions + noises
+            else:
+                raise ValueError("Inexistent noise model: {}".format(noise_model))
         else:
             noisy_actions = dist_actions
         return noisy_actions

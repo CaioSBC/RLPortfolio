@@ -49,6 +49,7 @@ class PolicyGradient:
         sample_bias: float = 1.0,
         sample_from_start: bool = False,
         lr: float = 1e-3,
+        action_noise: str | None = None,
         action_epsilon: float | Callable[[int], float] = 0,
         action_gamma: float | Callable[[int], float] = 0,
         parameter_noise: float | Callable[[int], float] = 0,
@@ -74,6 +75,8 @@ class PolicyGradient:
                 of the buffer. Otherwise, it will start from the end. Only used if
                 buffer is GeometricReplayBuffer.
             lr: policy neural network learning rate.
+            action_noise: Name of the model to be used in the action noise. The options are
+                "logarithmic", "dirichlet" or None. If None, no action noise is applied.
             action_epsilon: Noise logarithmic parameter (bigger than or equal to 0) to be
                 applied to performed actions during training. It can be a value or a
                 function whose argument is the number of training episodes/steps and that
@@ -98,6 +101,7 @@ class PolicyGradient:
         self.sample_bias = sample_bias
         self.sample_from_start = sample_from_start
         self.lr = lr
+        self.action_noise = action_noise
         self.action_epsilon = action_epsilon
         self.action_gamma = action_gamma
         self.parameter_noise = parameter_noise
@@ -654,6 +658,7 @@ class PolicyGradient:
                 action_gamma = self.action_gamma
             actions = apply_action_noise(
                 self.train_policy(obs, last_actions),
+                noise_model=self.action_noise,
                 epsilon=action_epsilon,
                 gamma=action_gamma,
             )
