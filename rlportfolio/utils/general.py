@@ -145,6 +145,16 @@ def apply_action_noise(
                     ).sample()
                     noises = epsilon * (random_actions - dist_actions)
                 noisy_actions = dist_actions + noises
+            elif noise_model == "dirichlet_2":
+                # noise is calculated based on the dirichlet distribution. A random
+                # action tensor is created and epsilon is used to define the weight
+                # of the randomness.
+                with torch.no_grad():
+                    random_actions = torch.distributions.Dirichlet(
+                        torch.ones_like(dist_actions) / 100
+                    ).sample()
+                    noises = epsilon * (random_actions - dist_actions)
+                noisy_actions = dist_actions + noises
             else:
                 raise ValueError("Inexistent noise model: {}".format(noise_model))
         else:
