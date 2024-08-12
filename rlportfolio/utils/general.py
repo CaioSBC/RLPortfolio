@@ -117,10 +117,22 @@ def apply_action_noise(
                 with torch.no_grad():
                     noises = torch.normal(
                         0,
-                        torch.max(torch.abs(log_actions), dim=1, keepdim=True)[0].expand_as(
-                            log_actions
-                        )
+                        torch.max(torch.abs(log_actions), dim=1, keepdim=True)[
+                            0
+                        ].expand_as(log_actions)
                         * epsilon,
+                    ).to(device)
+                noisy_actions = torch.softmax(log_actions + noises, dim=1)
+            elif noise_model == "logarithmic_const":
+                eps = 1e-7  # small value to avoid infinite numbers in log function
+                log_actions = torch.log(dist_actions + eps)
+                # noise is calculated through a normal distribution with 0 mean and
+                # std equal to ln(1e-7). Epsilon is used
+                # to control the value of std.
+                with torch.no_grad():
+                    noises = torch.normal(
+                        0,
+                        np.abs(np.log(eps)) * torch.ones_like(log_actions) * epsilon,
                     ).to(device)
                 noisy_actions = torch.softmax(log_actions + noises, dim=1)
             elif noise_model == "dirichlet":
@@ -128,7 +140,9 @@ def apply_action_noise(
                 # action tensor is created and epsilon is used to define the weight
                 # of the randomness.
                 with torch.no_grad():
-                    random_actions = torch.distributions.Dirichlet(torch.ones_like(dist_actions)).sample()
+                    random_actions = torch.distributions.Dirichlet(
+                        torch.ones_like(dist_actions)
+                    ).sample()
                     noises = epsilon * (random_actions - dist_actions)
                 noisy_actions = dist_actions + noises
             else:
