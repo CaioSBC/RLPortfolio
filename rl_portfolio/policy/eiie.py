@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import copy
+from typing import Any
+
 import torch
 from torch import nn
+from torch.func import stack_module_state, functional_call
 
 
 class EIIE(nn.Module):
@@ -166,6 +170,11 @@ class EIIERecurrent(nn.Module):
                         device=self.device,
                     )
                 )
+            if self.device != "cpu":
+                self.recurrent_nets[i].flatten_parameters()
+
+        # stateless model to be used in functional recurrent call.
+        self.base_recurrent_net = copy.deepcopy(self.recurrent_nets[0])
 
         self.final_convolution = nn.Conv2d(
             in_channels=rec_final_features + 1,
@@ -192,30 +201,26 @@ class EIIERecurrent(nn.Module):
         last_stocks, cash_bias = self._process_last_action(last_action)
         cash_bias = torch.zeros_like(cash_bias).to(self.device)
 
-        # run a recurrent net for every asset in portfolio
-        recurrent_outputs = []
-        for index, net in enumerate(self.recurrent_nets):
-            # memory optimization for GPU training
-            if self.device != "cpu":
-                net.flatten_parameters()
-            input = observation[:, :, index, :].transpose(
-                1, 2
-            )  # shape [N, time_window, initial_features]
-            output, _ = net(input)  # shape [N, time_window, rec_final_features]
-            output = output[:, -1, :]  # shape [N, rec_final_features]
-            output = output.unsqueeze(-1).unsqueeze(
-                -1
-            )  # shape [N, rec_final_features, 1, 1]
-            recurrent_outputs.append(output)
+        params, buffers = stack_module_state(self.recurrent_nets)
+        input = torch.permute(
+            observation, (2, 0, 3, 1)
+        )  # [portfolio_size, N, time_window, initial_features]
 
-        # concatenate recurrent outputs
-        recurrent_outputs = torch.cat(
-            recurrent_outputs, dim=2
-        )  # shape [N, rec_final_features, PORTFOLIO_SIZE, 1]
+        recurrent_output, _ = torch.vmap(self._functional_recurrent_net)(
+            params, buffers, input
+        )  # shape [portfolio_size, N, time_window, rec_final_features]
+
+        recurrent_output = torch.permute(
+            recurrent_output, (1, 3, 0, 2)
+        )  # shape [N, rec_final_features, portfolio_size, time_window]
+
+        recurrent_output = recurrent_output[
+            :, :, :, -1
+        ]  # # shape [N, rec_final_features, portfolio_size, 1]
 
         # add last stock weights
         output = torch.cat(
-            [last_stocks, recurrent_outputs], dim=1
+            [last_stocks, recurrent_output], dim=1
         )  # shape [N, rec_final_features + 1, PORTFOLIO_SIZE, 1]
         output = self.final_convolution(output)  # shape [N, 1, PORTFOLIO_SIZE, 1]
         output = torch.cat(
@@ -247,3 +252,22 @@ class EIIERecurrent(nn.Module):
         last_stocks = last_action[:, 1:].reshape((batch_size, 1, stocks, 1))
         cash_bias = last_action[:, 0].reshape((batch_size, 1, 1, 1))
         return last_stocks, cash_bias
+
+    def _functional_recurrent_net(self, params, buffers, x) -> Any:
+        """Functional call of a recurrent net.
+
+        Args:
+            params: Input model parameters.
+            buffers: Input model buffers.
+            x: Input data.
+
+        Note:
+            Since the code use this function inside a vmap, a weightless version
+            of a individual recurrent net is used in the function call.
+
+        Returns:
+            The result of calling the module.
+        """
+        if self.device != "cpu":
+            self.base_recurrent_net.flatten_parameters()
+        return functional_call(self.base_recurrent_net, (params, buffers), (x,))
