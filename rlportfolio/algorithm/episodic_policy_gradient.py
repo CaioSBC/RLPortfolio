@@ -5,8 +5,8 @@ import gymnasium as gym
 from tqdm import tqdm
 from torch.optim import Optimizer
 
-from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
-from rl_portfolio.algorithm.policy_gradient import PolicyGradient
+from rlportfolio.algorithm.buffers import SequentialReplayBuffer
+from rlportfolio.algorithm.policy_gradient import PolicyGradient
 
 
 class EpisodicPolicyGradient(PolicyGradient):

@@ -11,15 +11,15 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from typing import Any, Callable
 
-from rl_portfolio.policy import EIIE
-from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
-from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
-from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
-from rl_portfolio.utils import apply_action_noise
-from rl_portfolio.utils import combine_replay_buffers
-from rl_portfolio.utils import torch_to_numpy
-from rl_portfolio.utils import numpy_to_torch
-from rl_portfolio.utils import RLDataset
+from rlportfolio.policy import EIIE
+from rlportfolio.algorithm.buffers import PortfolioVectorMemory
+from rlportfolio.algorithm.buffers import SequentialReplayBuffer
+from rlportfolio.algorithm.buffers import GeometricReplayBuffer
+from rlportfolio.utils import apply_action_noise
+from rlportfolio.utils import combine_replay_buffers
+from rlportfolio.utils import torch_to_numpy
+from rlportfolio.utils import numpy_to_torch
+from rlportfolio.utils import RLDataset
 
 
 class PolicyGradient:

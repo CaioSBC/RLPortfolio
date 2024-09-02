@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
+from rlportfolio.algorithm.buffers import SequentialReplayBuffer
 
 from typing import Any
 

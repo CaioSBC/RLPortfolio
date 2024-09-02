@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
-from rl_portfolio.environment import PortfolioOptimizationEnv
+from rlportfolio.algorithm.buffers import PortfolioVectorMemory
+from rlportfolio.environment import PortfolioOptimizationEnv
 
 pvm = PortfolioVectorMemory(capacity=4, portfolio_size=5)
 

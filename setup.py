@@ -36,13 +36,13 @@ setup(
     license="MIT License v3",
     # long_description=readme + '\n\n' + history, # TO-DO
     include_package_data=True,
-    keywords="rl_portfolio",
-    name="rl_portfolio",
-    packages=find_packages(include=["rl_portfolio.*"]),
+    keywords="rlportfolio",
+    name="rlportfolio",
+    packages=find_packages(include=["rlportfolio.*"]),
     setup_requires=setup_requirements,
     test_suite="tests",
     tests_require=test_requirements,
-    url="https://github.com/C4i0kun/RLPortfolio",
-    version="0.0.1",
+    url="https://github.com/CaioSBC/RLPortfolio",
+    version="0.1.0",
     zip_safe=False,
 )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
+from rlportfolio.algorithm.buffers import SequentialReplayBuffer
 
 buffer = SequentialReplayBuffer(capacity=5)
 

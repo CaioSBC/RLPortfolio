@@ -9,8 +9,8 @@ from typing import Any
 
 from torch.utils.data.dataset import IterableDataset
 
-from rl_portfolio.algorithm.buffers import GeometricReplayBuffer, SequentialReplayBuffer
-from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
+from rlportfolio.algorithm.buffers import GeometricReplayBuffer, SequentialReplayBuffer
+from rlportfolio.algorithm.buffers import PortfolioVectorMemory
 
 
 class RLDataset(IterableDataset):

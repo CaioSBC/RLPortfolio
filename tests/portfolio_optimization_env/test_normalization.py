@@ -6,8 +6,8 @@ import pytest
 
 from datetime import datetime
 
-from rl_portfolio.environment import PortfolioOptimizationEnv
-from rl_portfolio.data import GroupByScaler
+from rlportfolio.environment import PortfolioOptimizationEnv
+from rlportfolio.data import GroupByScaler
 
 # dataframe with fake data to use in the tests
 test_dataframe = pd.DataFrame(
