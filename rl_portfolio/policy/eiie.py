@@ -147,10 +147,10 @@ class EIIERecurrent(nn.Module):
         super().__init__()
         self.device = device
 
-        self.recurrent_nets = []
+        recurrent_nets = []
         for i in range(portfolio_size):
             if rec_type == "rnn":
-                self.recurrent_nets.append(
+                recurrent_nets.append(
                     nn.RNN(
                         initial_features,
                         rec_final_features,
@@ -161,7 +161,7 @@ class EIIERecurrent(nn.Module):
                     )
                 )
             else:
-                self.recurrent_nets.append(
+                recurrent_nets.append(
                     nn.LSTM(
                         initial_features,
                         rec_final_features,
@@ -171,10 +171,13 @@ class EIIERecurrent(nn.Module):
                     )
                 )
             if self.device != "cpu":
-                self.recurrent_nets[i].flatten_parameters()
+                recurrent_nets[i].flatten_parameters()
+        
+        params, _ = stack_module_state(recurrent_nets)
+        self.recurrent_net = copy.deepcopy(recurrent_nets[0])
+        for name, param in self.recurrent_net.named_parameters():
+            param.data = params[name]
 
-        # stateless model to be used in functional recurrent call.
-        self.base_recurrent_net = copy.deepcopy(self.recurrent_nets[0])
 
         self.final_convolution = nn.Conv2d(
             in_channels=rec_final_features + 1,
