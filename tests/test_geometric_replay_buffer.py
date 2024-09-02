@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rl_portfolio.algorithm.buffers import GeometricReplayBuffer
+from rlportfolio.algorithm.buffers import GeometricReplayBuffer
 
 buffer = GeometricReplayBuffer(capacity=5)
 

@@ -6,7 +6,7 @@ import pytest
 
 from datetime import datetime
 
-from rl_portfolio.environment import PortfolioOptimizationEnv
+from rlportfolio.environment import PortfolioOptimizationEnv
 
 # dataframe with fake data to use in the tests
 test_dataframe = pd.DataFrame(

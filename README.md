@@ -86,7 +86,7 @@ from rlportfolio.algorithm import PolicyGradient
 algorithm = PolicyGradient(environment)
 ```
 
-Finally, it is possible to train the agent using the defined algorithm through the following method:
+Finally, you can train the agent using the defined algorithm through the following method:
 
 ```python
 # train the algorithm for 10000

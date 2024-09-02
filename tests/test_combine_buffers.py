@@ -3,10 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rl_portfolio.algorithm.buffers import PortfolioVectorMemory
-from rl_portfolio.algorithm.buffers import SequentialReplayBuffer
-from rl_portfolio.utils import combine_portfolio_vector_memories
-from rl_portfolio.utils import combine_replay_buffers
+from rlportfolio.algorithm.buffers import PortfolioVectorMemory
+from rlportfolio.algorithm.buffers import SequentialReplayBuffer
+from rlportfolio.utils import combine_portfolio_vector_memories
+from rlportfolio.utils import combine_replay_buffers
 
 
 def test_combine_two_rbs_1():

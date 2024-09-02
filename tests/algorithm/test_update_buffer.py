@@ -4,8 +4,8 @@ import pandas as pd
 import numpy as np
 import torch
 
-from rl_portfolio.algorithm import PolicyGradient
-from rl_portfolio.environment import PortfolioOptimizationEnv
+from rlportfolio.algorithm import PolicyGradient
+from rlportfolio.environment import PortfolioOptimizationEnv
 
 # dataframe with fake data to use in the tests
 test_dataframe = pd.DataFrame(

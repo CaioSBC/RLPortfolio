@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from sklearn.preprocessing import MinMaxScaler
 
-from rl_portfolio.data import GroupByScaler
+from rlportfolio.data import GroupByScaler
 
 test_dataframe = pd.DataFrame(
     {
