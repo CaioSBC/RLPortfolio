@@ -234,7 +234,7 @@ class GPM(nn.Module):
             x = torch.transpose(x, 0, 1)  # shape [num_stocks, feature_size]
             new_graph = Data(x=x, edge_index=edge_index).to(self.device)
             graphs.append(new_graph)
-        return Batch.from_data_list(graphs)
+        return Batch.from_data_list(graphs).to(self.device)
 
     def _create_edge_type_for_batch(
         self, batch: Batch, edge_type: torch.Tensor
@@ -271,7 +271,7 @@ class GPMSimplified(GPM):
         time_window: int = 50,
         softmax_temperature: float = 1,
         device: str = "cpu",
-    ) -> GPM:
+    ) -> GPMSimplified:
         """GPM (Graph-based Portfolio Management) policy network initializer.
 
         Args:
@@ -308,7 +308,7 @@ class GPMSimplified(GPM):
 
         # overwrite final convolution to deal with simplified
         # feature size
-        feature_size = conv_final_features + initial_features
+        feature_size = 2 * conv_final_features + initial_features
 
         self.final_convolution = nn.Conv2d(
             in_channels=feature_size + 1,
@@ -351,6 +351,7 @@ class GPMSimplified(GPM):
         graph_features = self.gcn(
             graph_batch.x, graph_batch.edge_index, edge_type
         )  # shape [N * num_stocks, feature_size]
+
         graph_features, _ = to_dense_batch(
             graph_features, graph_batch.batch
         )  # shape [N, num_stocks, feature_size]
