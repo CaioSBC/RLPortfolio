@@ -59,7 +59,7 @@ def apply_action_noise(
     actions: torch.Tensor,
     noise_model: str | None = None,
     epsilon: float = 0,
-    gamma: float = 0,
+    alpha: float = 1.0,
 ) -> torch.Tensor:
     """Apply noise to portfolio distribution considering its constraints.
 
@@ -67,50 +67,21 @@ def apply_action_noise(
         actions: Batch of agent actions.
         noise_model: Name of the action noise model to use.
         epsilon: Random noise parameter.
-        gamma: Distributional noise parameter.
+        alpha: Alpha parameter for dirichlet distribution.
 
     Returns:
         New batch of actions with applied noise.
     """
     portfolio_size = actions.shape[1]
-    batch_size = actions.shape[0]
 
     if portfolio_size > 1:
         device = actions.device
-        # STEP 1: Distributional noise.
-        # To avoid heterogeneous actions ([1, 0, 0, ...]), this step subtracts a value
-        # between 0 and gamma from the biggest value in the action tensor and distributes
-        # it equally in the other components of the action tensor.
-        if gamma > 0:
-            with torch.no_grad():
-                max_actions, _ = torch.max(actions, dim=1, keepdim=True)
-                min_actions, _ = torch.min(actions, dim=1, keepdim=True)
-                # the bigger the disparity between the max and min value of the action
-                # tensor, the bigger the probability of happening a distribution.
-                range_actions = max_actions - min_actions
-                dist_mask = torch.rand(batch_size, 1).to(device) < range_actions
-                dist_value = (
-                    dist_mask
-                    * torch.rand(batch_size, 1).to(device)
-                    * max_actions
-                    * gamma
-                )
-                max_mask = actions == max_actions.expand_as(actions)
-            # applies distribution noise to input actions
-            dist_actions = (
-                actions
-                - max_mask * dist_value
-                + (~max_mask) * dist_value / (portfolio_size - 1)
-            )
-        else:
-            dist_actions = actions
-
-        # STEP 2: Random noise.
+        
         # To create action diversity, a random noise is applied to actions.
         if epsilon > 0 and noise_model is not None:
             if noise_model == "logarithmic":
                 eps = 1e-7  # small value to avoid infinite numbers in log function
-                log_actions = torch.log(dist_actions + eps)
+                log_actions = torch.log(actions + eps)
                 # noise is calculated through a normal distribution with 0 mean and
                 # std equal to the max absolute logarithmic value. Epsilon is used
                 # to control the value of std.
@@ -125,7 +96,7 @@ def apply_action_noise(
                 noisy_actions = torch.softmax(log_actions + noises, dim=1)
             elif noise_model == "logarithmic_const":
                 eps = 1e-7  # small value to avoid infinite numbers in log function
-                log_actions = torch.log(dist_actions + eps)
+                log_actions = torch.log(actions + eps)
                 # noise is calculated through a normal distribution with 0 mean and
                 # std equal to ln(1e-7). Epsilon is used
                 # to control the value of std.
@@ -141,24 +112,14 @@ def apply_action_noise(
                 # of the randomness.
                 with torch.no_grad():
                     random_actions = torch.distributions.Dirichlet(
-                        torch.ones_like(dist_actions)
+                        torch.ones_like(actions) * alpha
                     ).sample()
-                    noises = epsilon * (random_actions - dist_actions)
-                noisy_actions = dist_actions + noises
-            elif noise_model == "dirichlet_2":
-                # noise is calculated based on the dirichlet distribution. A random
-                # action tensor is created and epsilon is used to define the weight
-                # of the randomness.
-                with torch.no_grad():
-                    random_actions = torch.distributions.Dirichlet(
-                        torch.ones_like(dist_actions) / 100
-                    ).sample()
-                    noises = epsilon * (random_actions - dist_actions)
-                noisy_actions = dist_actions + noises
+                    noises = epsilon * (random_actions - actions)
+                noisy_actions = actions + noises
             else:
                 raise ValueError("Inexistent noise model: {}".format(noise_model))
         else:
-            noisy_actions = dist_actions
+            noisy_actions = actions
         return noisy_actions
     else:
         return actions

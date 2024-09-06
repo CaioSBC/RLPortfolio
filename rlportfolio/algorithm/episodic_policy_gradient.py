@@ -146,7 +146,6 @@ class EpisodicPolicyGradient(PolicyGradient):
                     optimizer=val_optimizer,
                     plot_index=int(episode / val_period),
                 )
-                val_metrics.pop("rewards")
 
                 pbar.set_postfix(self._tqdm_postfix_dict(metrics, val_metrics))
 

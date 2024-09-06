@@ -51,7 +51,7 @@ class PolicyGradient:
         lr: float = 1e-3,
         action_noise: str | None = None,
         action_epsilon: float | Callable[[int], float] = 0,
-        action_gamma: float | Callable[[int], float] = 0,
+        action_alpha: float | Callable[[int], float] = 1.0,
         parameter_noise: float | Callable[[int], float] = 0,
         optimizer: type[Optimizer] = AdamW,
         use_tensorboard: bool = False,
@@ -76,19 +76,20 @@ class PolicyGradient:
                 buffer is GeometricReplayBuffer.
             lr: policy neural network learning rate.
             action_noise: Name of the model to be used in the action noise. The options are
-                "logarithmic", "dirichlet" or None. If None, no action noise is applied.
+                "logarithmic", "logarithmic_const", "dirichlet" or None. If None, no action 
+                noise is applied.
             action_epsilon: Noise logarithmic parameter (bigger than or equal to 0) to be
                 applied to performed actions during training. It can be a value or a
                 function whose argument is the number of training episodes/steps and that
                 outputs the noise value.
-            action_gamma: Noise distributional parameter (bigger than or equal to 0) to be
-                applied to performed actions during training. It can be a value or a
-                function whose argument is the number of training episodes/steps and that
-                outputs the noise value.
+            action_alpha: Alpha parameter (bigger than 1) to be used to create a Dirichlet 
+                distribution in the "dirichlet" noise model. It can be a value or a function 
+                whose argument is the number of training episodes/steps and that outputs the
+                noise value.
             parameter_noise: Noise parameter (bigger than or equal to 0) to be applied
                 to the parameters of the policy network during training. It can be a
                 value or a function whose argument is the number of training episodes/
-                steps and that outputs the noise value.
+                steps and that outputs the noise value. Currently not implemented.
             optimizer: Optimizer of neural network.
             use_tensorboard: If true, training logs will be added to tensorboard.
             summary_writer_kwargs: Arguments to be used in PyTorch's tensorboard summary
@@ -103,7 +104,7 @@ class PolicyGradient:
         self.lr = lr
         self.action_noise = action_noise
         self.action_epsilon = action_epsilon
-        self.action_gamma = action_gamma
+        self.action_alpha = action_alpha
         self.parameter_noise = parameter_noise
         self.replay_buffer = replay_buffer
         self.optimizer = optimizer
@@ -648,19 +649,19 @@ class PolicyGradient:
                 action_epsilon = self.action_epsilon(noise_index)
             else:
                 action_epsilon = self.action_epsilon
-            if callable(self.action_gamma):
+            if callable(self.action_alpha):
                 if noise_index is None:
                     raise TypeError(
                         "Noise index parameter of callable action noise gamma is None."
                     )
-                action_gamma = self.action_gamma(noise_index)
+                action_alpha = self.action_alpha(noise_index)
             else:
-                action_gamma = self.action_gamma
+                action_alpha = self.action_alpha
             actions = apply_action_noise(
                 self.train_policy(obs, last_actions),
                 noise_model=self.action_noise,
                 epsilon=action_epsilon,
-                gamma=action_gamma,
+                alpha=action_alpha,
             )
 
         # calculate comission rate and transaction remainder factor
