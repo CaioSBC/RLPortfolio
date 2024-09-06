@@ -254,3 +254,130 @@ class GPM(nn.Module):
                 [batch_edge_type, torch.clone(edge_type).detach()]
             )
         return batch_edge_type
+
+
+class GPMSimplified(GPM):
+    def __init__(
+        self,
+        edge_index: np.ndarray | torch.Tensor,
+        edge_type: np.ndarray,
+        nodes_to_select: np.ndarray | list[int] | torch.Tensor,
+        initial_features: int = 3,
+        k_short: int = 3,
+        k_medium: int = 21,
+        conv_mid_features: int = 3,
+        conv_final_features: int = 20,
+        graph_layers: int = 1,
+        time_window: int = 50,
+        softmax_temperature: float = 1,
+        device: str = "cpu",
+    ) -> GPM:
+        """GPM (Graph-based Portfolio Management) policy network initializer.
+
+        Args:
+            edge_index: Graph connectivity in COO format.
+            edge_type: Type of each edge in edge_index.
+            nodes_to_select: ID of nodes to be selected to the portfolio.
+            initial_features: Number of input features.
+            k_short: Size of short convolutional kernel.
+            k_medium: Size of medium convolutional kernel.
+            conv_mid_features: Size of intermediate convolutional channels.
+            conv_final_features: Size of final convolutional channels.
+            graph_layers: Number of graph neural network layers.
+            time_window: Size of time window used as agent's state.
+            softmax_temperature: Temperature parameter to softmax function.
+            device: Device in which the neural network will be run.
+
+        Note:
+            Reference article: https://doi.org/10.1016/j.neucom.2022.04.105.
+        """
+        super().__init__(
+            edge_index,
+            edge_type,
+            nodes_to_select,
+            initial_features,
+            k_short,
+            k_medium,
+            conv_mid_features,
+            conv_final_features,
+            graph_layers,
+            time_window,
+            softmax_temperature,
+            device,
+        )
+
+        # overwrite final convolution to deal with simplified
+        # feature size
+        feature_size = conv_final_features + initial_features
+
+        self.final_convolution = nn.Conv2d(
+            in_channels=feature_size + 1,
+            out_channels=1,
+            kernel_size=(1, 1),
+            device=self.device,
+        )
+
+    def forward(
+        self, observation: torch.Tensor, last_action: torch.Tensor
+    ) -> torch.Tensor:
+        """Policy network's forward propagation. Defines a most favorable
+        action of this policy given the inputs.
+
+        Args:
+            observation: environment observation.
+            last_action: Last action performed by agent.
+
+        Returns:
+            Action to be taken.
+        """
+        last_stocks, cash_bias = self._process_last_action(last_action)
+        cash_bias = torch.zeros_like(cash_bias).to(self.device)
+
+        short_features = self.short_term(observation)
+        medium_features = self.mid_term(observation)
+        long_features = self.long_term(observation)
+
+        temporal_features = torch.cat(
+            [short_features, medium_features, long_features], dim=1
+        )  # shape [N, feature_size, num_stocks, 1]
+
+        # add features to graph
+        graph_batch = self._create_graph_batch(temporal_features, self.edge_index)
+
+        # set edge index for the batch
+        edge_type = self._create_edge_type_for_batch(graph_batch, self.edge_type)
+
+        # perform graph convolution
+        graph_features = self.gcn(
+            graph_batch.x, graph_batch.edge_index, edge_type
+        )  # shape [N * num_stocks, feature_size]
+        graph_features, _ = to_dense_batch(
+            graph_features, graph_batch.batch
+        )  # shape [N, num_stocks, feature_size]
+        graph_features = torch.transpose(
+            graph_features, 1, 2
+        )  # shape [N, feature_size, num_stocks]
+        graph_features = torch.unsqueeze(
+            graph_features, 3
+        )  # shape [N, feature_size, num_stocks, 1]
+        graph_features = graph_features.to(self.device)
+
+        # perform selection and add last stocks
+        features = torch.index_select(
+            temporal_features, dim=2, index=self.nodes_to_select
+        )  # shape [N, feature_size, portfolio_size, 1]
+        features = torch.cat([last_stocks, features], dim=1)
+
+        # final convolution
+        output = self.final_convolution(features)  # shape [N, 1, portfolio_size, 1]
+        output = torch.cat(
+            [cash_bias, output], dim=2
+        )  # shape [N, 1, portfolio_size + 1, 1]
+
+        # output shape must be [N, portfolio_size + 1] = [1, portfolio_size + 1], being N batch size
+        output = torch.squeeze(output, 3)
+        output = torch.squeeze(output, 1)  # shape [N, portfolio_size + 1]
+
+        output = self.softmax(output / self.softmax_temperature)
+
+        return output
