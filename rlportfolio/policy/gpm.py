@@ -3,11 +3,8 @@ from __future__ import annotations
 import numpy as np
 import torch
 from torch import nn
-from torch_geometric.data import Batch
-from torch_geometric.data import Data
 from torch_geometric.nn import RGCNConv
 from torch_geometric.nn import Sequential
-from torch_geometric.utils import to_dense_batch
 
 
 class GPM(nn.Module):
@@ -24,6 +21,7 @@ class GPM(nn.Module):
         graph_layers: int = 1,
         time_window: int = 50,
         softmax_temperature: float = 1,
+        num_workers: int = 1,
         device: str = "cpu",
     ) -> GPM:
         """GPM (Graph-based Portfolio Management) policy network initializer.
@@ -40,6 +38,8 @@ class GPM(nn.Module):
             graph_layers: Number of graph neural network layers.
             time_window: Size of time window used as agent's state.
             softmax_temperature: Temperature parameter to softmax function.
+            num_workers: Number of workers to use in parallel execution of
+                graph batches.
             device: Device in which the neural network will be run.
 
         Note:
@@ -47,6 +47,7 @@ class GPM(nn.Module):
         """
         super().__init__()
         self.device = device
+        self.num_workers = num_workers
         self.softmax_temperature = softmax_temperature
 
         num_relations = np.unique(edge_type).shape[0]
@@ -152,26 +153,24 @@ class GPM(nn.Module):
             [short_features, medium_features, long_features], dim=1
         )  # shape [N, feature_size, num_stocks, 1]
 
-        # add features to graph
-        graph_batch = self._create_graph_batch(temporal_features, self.edge_index)
+        batch_size = temporal_features.shape[0]
 
-        # set edge index for the batch
-        edge_type = self._create_edge_type_for_batch(graph_batch, self.edge_type)
+        # add features to graph
+        graph_input = self._create_graph_input_batch(temporal_features)
+
+        # set edge indexes for batch
+        edge_index = self._create_edge_index_batch(batch_size, self.edge_index)
+
+        # set edge types for the batch
+        edge_type = self._create_edge_type_batch(batch_size, self.edge_type)
 
         # perform graph convolution
-        graph_features = self.gcn(
-            graph_batch.x, graph_batch.edge_index, edge_type
+        graph_output = self.gcn(
+            graph_input, edge_index, edge_type
         )  # shape [N * num_stocks, feature_size]
-        graph_features, _ = to_dense_batch(
-            graph_features, graph_batch.batch
-        )  # shape [N, num_stocks, feature_size]
-        graph_features = torch.transpose(
-            graph_features, 1, 2
-        )  # shape [N, feature_size, num_stocks]
-        graph_features = torch.unsqueeze(
-            graph_features, 3
-        )  # shape [N, feature_size, num_stocks, 1]
-        graph_features = graph_features.to(self.device)
+
+        # generate tensor with graph relational features
+        graph_features = self._graph_output_to_features(graph_output, batch_size)
 
         # concatenate graph features and temporal features
         features = torch.cat(
@@ -215,45 +214,61 @@ class GPM(nn.Module):
         cash_bias = last_action[:, 0].reshape((batch_size, 1, 1, 1))
         return last_stocks, cash_bias
 
-    def _create_graph_batch(
-        self, features: torch.Tensor, edge_index: torch.Tensor
-    ) -> Batch:
-        """Create a batch of graphs with the features.
+    def _create_graph_input_batch(self, features: torch.Tensor) -> torch.Tensor:
+        """Creates input tensor representing a batch of data.
 
         Args:
-          features: Tensor of shape [batch_size, feature_size, num_stocks, 1].
-          edge_index: Graph connectivity in COO format.
+            features: Tensor of shape [batch_size, feature_size, num_stocks, 1].
 
         Returns:
-          A batch of graphs with temporal features associated with each node.
+            A tensor representing a batch of graphs with temporal features
+            associated with each node.
         """
-        batch_size = features.shape[0]
-        graphs = []
-        for i in range(batch_size):
-            x = features[i, :, :, 0]  # shape [feature_size, num_stocks]
-            x = torch.transpose(x, 0, 1)  # shape [num_stocks, feature_size]
-            new_graph = Data(x=x, edge_index=edge_index).to(self.device)
-            graphs.append(new_graph)
-        return Batch.from_data_list(graphs).to(self.device)
+        x = features[:, :, :, 0].transpose(
+            1, 2
+        )  # shape [batch_size, num_stocks, feature_size]
+        out = x.reshape(-1, x.shape[2])  # shape [batch_size * num_stocks, feature_size]
+        return out
 
-    def _create_edge_type_for_batch(
-        self, batch: Batch, edge_type: torch.Tensor
+    def _create_edge_index_batch(
+        self, batch_size: int, edge_index: torch.Tensor
+    ) -> torch.Tensor:
+        offset_value = edge_index.max().item() + 1
+        offset = offset_value * torch.arange(batch_size).repeat(
+            edge_index.shape[0], 1
+        ).repeat_interleave(edge_index.shape[1], dim=1)
+        return edge_index.repeat(1, batch_size) + offset
+
+    def _create_edge_type_batch(
+        self, batch_size: int, edge_type: torch.Tensor
     ) -> torch.Tensor:
         """Create the edge type tensor for a batch of graphs.
 
         Args:
-          batch: Batch of graph data.
-          edge_type: Original edge type tensor.
+            batch: Batch of graph data.
+            edge_type: Original edge type tensor.
 
         Returns:
-          Edge type tensor adapted for the batch.
+            Edge type tensor adapted for the batch.
         """
-        batch_edge_type = torch.clone(edge_type).detach()
-        for i in range(1, batch.batch_size):
-            batch_edge_type = torch.cat(
-                [batch_edge_type, torch.clone(edge_type).detach()]
-            )
-        return batch_edge_type
+        return edge_type.repeat(batch_size)
+
+    def _graph_output_to_features(
+        self, graph_output: torch.Tensor, batch_size: int
+    ) -> torch.Tensor:
+        graph_output = graph_output.squeeze()
+        graph_features = graph_output.reshape(
+            batch_size, -1, graph_output.shape[1]
+        )  # shape [N, num_stocks, feature_size]
+
+        graph_features = torch.transpose(
+            graph_features, 1, 2
+        )  # shape [N, feature_size, num_stocks]
+        graph_features = torch.unsqueeze(
+            graph_features, 3
+        )  # shape [N, feature_size, num_stocks, 1]
+
+        return graph_features
 
 
 class GPMSimplified(GPM):
@@ -270,6 +285,7 @@ class GPMSimplified(GPM):
         graph_layers: int = 1,
         time_window: int = 50,
         softmax_temperature: float = 1,
+        num_workers: int = 1,
         device: str = "cpu",
     ) -> GPMSimplified:
         """GPM (Graph-based Portfolio Management) policy network initializer.
@@ -286,6 +302,8 @@ class GPMSimplified(GPM):
             graph_layers: Number of graph neural network layers.
             time_window: Size of time window used as agent's state.
             softmax_temperature: Temperature parameter to softmax function.
+            num_workers: Number of workers to use in parallel execution of
+                graph batches.
             device: Device in which the neural network will be run.
 
         Note:
@@ -303,6 +321,7 @@ class GPMSimplified(GPM):
             graph_layers,
             time_window,
             softmax_temperature,
+            num_workers,
             device,
         )
 
@@ -341,31 +360,30 @@ class GPMSimplified(GPM):
             [short_features, medium_features, long_features], dim=1
         )  # shape [N, feature_size, num_stocks, 1]
 
-        # add features to graph
-        graph_batch = self._create_graph_batch(temporal_features, self.edge_index)
+        batch_size = temporal_features.shape[0]
 
-        # set edge index for the batch
-        edge_type = self._create_edge_type_for_batch(graph_batch, self.edge_type)
+        # add features to graph
+        graph_input = self._create_graph_input_batch(temporal_features)
+
+        # set edge indexes for batch
+        edge_index = self._create_edge_index_batch(batch_size, self.edge_index)
+
+        # set edge types for the batch
+        edge_type = self._create_edge_type_batch(batch_size, self.edge_type)
 
         # perform graph convolution
-        graph_features = self.gcn(
-            graph_batch.x, graph_batch.edge_index, edge_type
+        graph_output = self.gcn(
+            graph_input, edge_index, edge_type
         )  # shape [N * num_stocks, feature_size]
 
-        graph_features, _ = to_dense_batch(
-            graph_features, graph_batch.batch
-        )  # shape [N, num_stocks, feature_size]
-        graph_features = torch.transpose(
-            graph_features, 1, 2
-        )  # shape [N, feature_size, num_stocks]
-        graph_features = torch.unsqueeze(
-            graph_features, 3
+        # generate tensor with graph relational features
+        graph_features = self._graph_output_to_features(
+            graph_output, batch_size
         )  # shape [N, feature_size, num_stocks, 1]
-        graph_features = graph_features.to(self.device)
 
         # perform selection and add last stocks
         features = torch.index_select(
-            temporal_features, dim=2, index=self.nodes_to_select
+            graph_features, dim=2, index=self.nodes_to_select
         )  # shape [N, feature_size, portfolio_size, 1]
         features = torch.cat([last_stocks, features], dim=1)
 
