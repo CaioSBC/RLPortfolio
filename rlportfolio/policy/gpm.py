@@ -236,7 +236,7 @@ class GPM(nn.Module):
         offset_value = edge_index.max().item() + 1
         offset = offset_value * torch.arange(batch_size).repeat(
             edge_index.shape[0], 1
-        ).repeat_interleave(edge_index.shape[1], dim=1)
+        ).repeat_interleave(edge_index.shape[1], dim=1).to(self.device)
         return edge_index.repeat(1, batch_size) + offset
 
     def _create_edge_type_batch(
