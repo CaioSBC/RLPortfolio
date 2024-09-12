@@ -7,6 +7,7 @@ import numpy as np
 from collections.abc import Iterator
 from typing import Any
 
+from torch import nn
 from torch.utils.data.dataset import IterableDataset
 
 from rlportfolio.algorithm.buffers import GeometricReplayBuffer, SequentialReplayBuffer
@@ -127,8 +128,8 @@ def apply_action_noise(
 
 @torch.no_grad
 def apply_parameter_noise(
-    model: torch.nn.Module, epsilon: float = 0
-) -> torch.nn.Module:
+    model: nn.Module, epsilon: float = 0
+) -> nn.Module:
     """Apply noise to PyTorch model. If the model is a portfolio optimization
     policy, the noise allows the agent to generate different actions and
     explore the action space.
@@ -249,3 +250,17 @@ def combine_portfolio_vector_memories(
     new_pvm.memory = new_memory
     new_pvm.index = new_index
     return new_pvm
+
+
+def create_module_copies(module: nn.Module, number_of_copies: int) -> nn.ModuleList:
+    """Produces a number of identical Pytorch modules and returns them in a
+    module list.
+    
+    Args:
+        module: Pytorch module to be copied.
+        number_of_copies: Number of copies to return.
+
+    Returns:
+        PyTorch ModuleList with copies of the input module.
+    """
+    return nn.ModuleList([copy.deepcopy(module) for _ in range(number_of_copies)])
