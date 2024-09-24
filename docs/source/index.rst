@@ -23,3 +23,4 @@ RLPortfolio Documentation
    :caption: Contents
 
    install/installation
+   tutorial/getting_starting
