@@ -19,9 +19,10 @@ RLPortfolio Documentation
    This project is mainly intended for academic purposes. Therefore, be careful if using RLPortfolio to trade real money and consult a professional before investing, if possible.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Getting Started
 
+   getting_started/about
    getting_started/installation
    getting_started/components
    getting_started/first_agent
