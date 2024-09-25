@@ -20,7 +20,15 @@ RLPortfolio Documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
+   :caption: Getting Started
 
-   install/installation
-   tutorial/getting_starting
+   getting_started/installation
+   getting_started/components
+   getting_started/first_agent
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Environment
+
+   environment/environment
+   environment/portfolio_optimization_env
