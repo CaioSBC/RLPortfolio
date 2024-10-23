@@ -3,7 +3,7 @@ numpy
 pandas
 quantstats
 scikit-learn
-tb-nightly
+tensorboard
 torch
 torch_geometric
 tqdm
