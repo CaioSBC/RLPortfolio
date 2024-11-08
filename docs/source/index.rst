@@ -33,3 +33,9 @@ RLPortfolio Documentation
 
    environment/environment
    environment/portfolio_optimization_env
+
+.. toctree::
+   :maxdepth: 5
+   :caption: Package Reference
+
+   apidoc/modules
