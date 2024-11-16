@@ -42,6 +42,13 @@ RLPortfolio Documentation
    policy/implemented_policies
 
 .. toctree::
+   :maxdepth: 2
+   :caption: Algorithm
+
+   algorithm/algorithm
+   algorithm/policy_gradient
+
+.. toctree::
    :maxdepth: 5
    :caption: Package Reference
 
