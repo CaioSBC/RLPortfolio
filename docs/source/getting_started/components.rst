@@ -22,16 +22,19 @@ The Submodules
 
 The library, however, is composed of 5 submodules, each one implementing tools that can be applied to the portfolio optimization problem:
 
-+-------------------------+---------------------------------------------------------------------------------+
-| Component               | Description                                                                     |
-+=========================+=================================================================================+
-| rlportfolio.algorithm   | A compilation of specific training algorithms to portfolio optimization agents. |
-+-------------------------+---------------------------------------------------------------------------------+
-| rlportfolio.data        | Functions and classes to perform data preprocessing.                            |
-+-------------------------+---------------------------------------------------------------------------------+
-| rlportfolio.environment | Training reinforcement learning environment.                                    |
-+-------------------------+---------------------------------------------------------------------------------+
-| rlportfolio.policy      | A collection of deep neural networks to be used in the agent.                   |
-+-------------------------+---------------------------------------------------------------------------------+
-| rlportfolio.utils       | Utility functions for convenience.                                              |
-+-------------------------+---------------------------------------------------------------------------------+
+.. list-table::
+    :width: 100 %
+    :header-rows: 1
+
+    * - Component
+      - Description
+    * - :py:mod:`rlportfolio.algorithm`
+      - A compilation of specific training algorithms to portfolio optimization agents.
+    * - :py:mod:`rlportfolio.data`
+      - Functions and classes to perform data preprocessing. 
+    * - :py:mod:`rlportfolio.environment`
+      - Training reinforcement learning environment.
+    * - :py:mod:`rlportfolio.policy`
+      - A collection of deep neural networks to be used in the agent. 
+    * - :py:mod:`rlportfolio.utils`
+      - Utility functions for convenience.
