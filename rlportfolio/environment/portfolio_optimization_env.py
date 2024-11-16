@@ -102,7 +102,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 output during simulation. Possible values are "by_initial_value",
                 "by_last_value", "by_initial_FEATURE_NAME", "by_last_FEATURE_NAME"
                 (where FEATURE_NAME must be change to the name of the feature used
-                as normalizer) and a custgom function. If None, no normalization is
+                as normalizer) and a custom function. If None, no normalization is
                 done.
             reward_scaling: A scaling factor to multiply the reward function. This
                 factor can help training.
