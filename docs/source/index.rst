@@ -35,6 +35,13 @@ RLPortfolio Documentation
    environment/portfolio_optimization_env
 
 .. toctree::
+   :maxdepth: 2
+   :caption: Policy
+
+   policy/policy
+   policy/implemented_policies
+
+.. toctree::
    :maxdepth: 5
    :caption: Package Reference
 
