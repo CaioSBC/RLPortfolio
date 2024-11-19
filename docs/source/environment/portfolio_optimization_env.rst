@@ -1,3 +1,5 @@
+.. _poe-label:
+
 *PortfolioOptimizationEnv*
 ==========================
 

@@ -6,20 +6,10 @@ import gymnasium as gym
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import quantstats as qs
 
 from pathlib import Path
 from typing import Any, Callable
-
-try:
-    import quantstats as qs
-except ModuleNotFoundError:
-    raise ModuleNotFoundError(
-        """QuantStats module not found, environment can't plot results and calculate indicators.
-        This module is not installed with rl_portfolio. Install by running one of the options:
-        pip install quantstats --upgrade --no-cache-dir
-        conda install -c ranaroussi quantstats
-        """
-    )
 
 
 class PortfolioOptimizationEnv(gym.Env):
@@ -255,16 +245,12 @@ class PortfolioOptimizationEnv(gym.Env):
             through the attribute "observation_space".
 
         Returns:
-            The following tuple is returned: (observation, reward, terminal,
-            truncated, info).
-
-            observation: Current simulation observation.
-            reward: Reward related to the last performed action.
-            terminal: If True, the environment is in a terminal state.
-            truncated: If True, the environment has passed it's simulation
-                time limit. Currently, it's always False.
-            info: A dictionary containing informations about the last
-                simulation step.
+            A tuple containing, respectively, a numpy array (the current simulation
+            observation), a float number (the reward related to the last performed
+            action), a boolean (if True, denotes that the environment is in a terminal
+            state), another boolean (Currently, it is always False, since the simulation
+            has no time limit) and a dictionary (informations about the last simulation
+            step).
         """
         self._terminal = self._time_index >= len(self._sorted_times) - 1
 
