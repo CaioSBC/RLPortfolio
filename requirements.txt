@@ -1,8 +1,11 @@
 gymnasium
 numpy
 pandas
+pytest
 quantstats
 scikit-learn
+sphinx
+sphinx-rtd-theme
 tensorboard
 torch
 torch_geometric
