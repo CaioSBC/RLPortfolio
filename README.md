@@ -8,7 +8,9 @@ RLPortfolio is a Python package which provides several features to implement, tr
 - Two policy gradient training algorithms that are specifically built to solve the portfolio optimization task.
 - Four cutting-edge deep neural networks implemented in PyTorch that can be used as the agent policy.
 
-**Note**: This project is mainly intended for academic purposes. Therefore, be careful if using RLPortfolio to trade real money and consult a professional before investing, if possible. 
+[Click here to access the library documentation!](https://rlportfolio.readthedocs.io/en/latest/)
+
+**Note**: This project is mainly intended for academic purposes. Therefore, be careful if using RLPortfolio to trade real money and consult a professional before investing, if possible.
 
 ## About RLPortfolio
 
