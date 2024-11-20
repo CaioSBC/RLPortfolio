@@ -143,7 +143,7 @@ class EIIERecurrent(nn.Module):
         super().__init__()
         self.device = device
 
-        self.recurrent_nets = []
+        self.recurrent_nets = nn.ModuleList([])
         for i in range(portfolio_size):
             if rec_type == "rnn":
                 self.recurrent_nets.append(
@@ -198,6 +198,8 @@ class EIIERecurrent(nn.Module):
             # memory optimization for GPU training
             if self.device != "cpu":
                 net.flatten_parameters()
+
+            
             input = observation[:, :, index, :].transpose(
                 1, 2
             )  # shape [N, time_window, initial_features]

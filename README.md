@@ -1,4 +1,4 @@
-![RLPortfolio Logo](figs/rlportfolio_logo.png)
+![RLPortfolio Logo](figs/rlportfolio_title.png)
 
 ------------------------------------------
 
