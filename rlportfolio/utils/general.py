@@ -63,7 +63,7 @@ def apply_action_noise(
 ) -> torch.Tensor:
     """Apply noise to portfolio distribution considering its constraints.
 
-    Arg:
+    Args:
         actions: Batch of agent actions.
         noise_model: Name of the action noise model to use.
         epsilon: Random noise parameter.
@@ -133,7 +133,7 @@ def apply_parameter_noise(
     policy, the noise allows the agent to generate different actions and
     explore the action space.
 
-    Arg:
+    Args:
         model: PyTorch model to add parameter noise.
         epsilon: Noise parameter.
 
@@ -154,7 +154,7 @@ def apply_parameter_noise(
 def torch_to_numpy(tensor: torch.Tensor, squeeze: float = False) -> np.ndarray:
     """Transforms torch tensor to numpy array.
 
-    Arg:
+    Args:
         tensor: Tensor to be transformed.
         squeeze: If True, numpy array will be squeezed, eliminating
             dimensions of size 1.
@@ -176,7 +176,7 @@ def numpy_to_torch(
 ) -> torch.Tensor:
     """Transforms numpy array to torch tensor.
 
-    Arg:
+    Args:
         array: Numpy array to be transformed.
         type: Type of torch tensor.
         device: Torch tensor device.
