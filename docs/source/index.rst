@@ -47,6 +47,7 @@ RLPortfolio Documentation
 
    algorithm/algorithm
    algorithm/policy_gradient
+   algorithm/episodic_policy_gradient
 
 .. toctree::
    :maxdepth: 5

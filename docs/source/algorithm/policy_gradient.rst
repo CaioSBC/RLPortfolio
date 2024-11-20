@@ -1,3 +1,5 @@
+.. _pg-label:
+
 Policy Gradient for Portfolio Optimization
 ==========================================
 
@@ -68,3 +70,8 @@ Validating
 It is possible to validate the agent during training by setting a validation environment in the :code:`val_env` and defining the :code:`val_period`, which is the period of steps in which the validation occurs.
 
 The validation sequence is identical to the testing sequence and is used in order to find the best hyperparameters of the training process. The parameters of the validation sequence can be set by changing the arguments that start with :code:`_val` in the :code:`train` method.
+
+Logging
+-------
+
+In order to log the performance of the agent during training, it is possible to set a :code:`logging_period`. After :code:`logging_period` steps, the agent runs a complete episode in the training environment and calculates performance metrics, which are shown in the training bar animation and in `Tensorboard <https://www.tensorflow.org/tensorboard/get_started>`_.
