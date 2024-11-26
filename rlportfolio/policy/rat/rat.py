@@ -38,7 +38,6 @@ class RAT(nn.Module):
         self.feature_number = feature_number
         self.local_context_length = local_context_length
 
-        c = copy.deepcopy
         attn_Encoder = MultiHeadedAttention(
             True, h, d_model_Encoder, 0.1, local_context_length, device
         )
@@ -66,21 +65,21 @@ class RAT(nn.Module):
             d_model_Encoder,
             d_model_Decoder,
             Encoder(
-                EncoderLayer(d_model_Encoder, c(attn_Encoder), c(ff_Encoder), dropout),
+                EncoderLayer(d_model_Encoder, copy.deepcopy(attn_Encoder), copy.deepcopy(ff_Encoder), dropout),
                 N,
             ),
             Decoder(
                 DecoderLayer(
                     d_model_Decoder,
-                    c(attn_Decoder),
-                    c(attn_En_Decoder),
-                    c(ff_Decoder),
+                    copy.deepcopy(attn_Decoder),
+                    copy.deepcopy(attn_En_Decoder),
+                    copy.deepcopy(ff_Decoder),
                     dropout,
                 ),
                 N,
             ),
-            c(position_Encoder),  # price series position ecoding
-            c(position_Decoder),  # local_price_context position ecoding
+            copy.deepcopy(position_Encoder),  # price series position ecoding
+            copy.deepcopy(position_Decoder),  # local_price_context position ecoding
             local_context_length,
             device,
         )
@@ -140,9 +139,9 @@ class RAT(nn.Module):
             Reshaped last action performed.
         """
         batch_size = last_action.shape[0]
-        stocks = last_action.shape[1]
+        stocks = last_action.shape[1] - 1
 
-        return last_action.reshape((batch_size, stocks, 1))
+        return last_action[:, 1:].reshape((batch_size, stocks, 1))
     
 
     def _subsequent_mask(self, size):

@@ -44,8 +44,9 @@ class MultiHeadedAttention(nn.Module):
             d_model, d_model, (1, 1), stride=1, padding=0, bias=True
         )
 
-        self.attn = None
-        self.attn_asset = None
+        # commented to avoid deepcopy error
+        # self.attn = None
+        # self.attn_asset = None
         self.dropout = nn.Dropout(p=dropout)
         self.feature_weight_linear = nn.Linear(d_model, d_model)
         self.asset_atten = asset_atten
@@ -201,7 +202,7 @@ class MultiHeadedAttention(nn.Module):
         )  # [11*128,31,2,12]
 
         ################################################ Multi-head attention ##########################################################################
-        x, self.attn = attention(query, key, value, mask=None, dropout=self.dropout)
+        x, _ = attention(query, key, value, mask=None, dropout=self.dropout)
         x = x.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k)
         x = x.view(
             q_size0, q_size1, q_size2, q_size3
@@ -247,7 +248,7 @@ class MultiHeadedAttention(nn.Module):
             )  # [31*128,2,11,12]
             ######################################################################################################################
             #            ass_mask=torch.ones(q_size2*q_size1,1,1,q_size0).to(self.device)  #[31*128,1,1,11]
-            x, self.attn_asset = attention(
+            x, _ = attention(
                 ass_query, ass_key, ass_value, mask=None, dropout=self.dropout
             )
             x = (

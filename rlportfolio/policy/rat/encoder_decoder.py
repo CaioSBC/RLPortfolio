@@ -156,7 +156,7 @@ class EncoderDecoder(nn.Module):
         )
         decode_out = decode_out.transpose(1, 0)  # [11,128,1,2*12]->#[128,11,1,2*12]
         decode_out = torch.squeeze(decode_out, 2)  # [128,11,1,2*12]->[128,11,2*12]
-        previous_w = previous_w.permute(0, 2, 1)  # [128,1,11]->[128,11,1]
+        # previous_w = previous_w.permute(0, 2, 1)  # [128,1,11]->[128,11,1] == not needed in RLPortfolio
         out = torch.cat(
             [decode_out, previous_w], 2
         )  # [128,11,2*12]  cat [128,11,1] -> [128,11,2*12+1]
