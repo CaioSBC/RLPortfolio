@@ -76,14 +76,14 @@ class PolicyGradient:
                 buffer is GeometricReplayBuffer.
             lr: policy neural network learning rate.
             action_noise: Name of the model to be used in the action noise. The options are
-                "logarithmic", "logarithmic_const", "dirichlet" or None. If None, no action 
+                "logarithmic", "logarithmic_const", "dirichlet" or None. If None, no action
                 noise is applied.
             action_epsilon: Noise logarithmic parameter (bigger than or equal to 0) to be
                 applied to performed actions during training. It can be a value or a
                 function whose argument is the number of training episodes/steps and that
                 outputs the noise value.
-            action_alpha: Alpha parameter (bigger than 1) to be used to create a Dirichlet 
-                distribution in the "dirichlet" noise model. It can be a value or a function 
+            action_alpha: Alpha parameter (bigger than 1) to be used to create a Dirichlet
+                distribution in the "dirichlet" noise model. It can be a value or a function
                 whose argument is the number of training episodes/steps and that outputs the
                 noise value.
             parameter_noise: Noise parameter (bigger than or equal to 0) to be applied
@@ -508,7 +508,9 @@ class PolicyGradient:
         optimizer = self.optimizer if optimizer is None else optimizer
 
         # define policy
-        self.test_policy = copy.deepcopy(policy).to(self.device)
+        self.test_policy = (
+            copy.deepcopy(policy).eval().to(self.device)
+        )  # eval mode to disable dropout
         self.test_optimizer = optimizer(self.test_policy.parameters(), lr=lr)
 
         # replay buffer and portfolio vector memory
