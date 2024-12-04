@@ -1,4 +1,4 @@
-![RLPortfolio Logo](figs/rlportfolio_title.png)
+![RLPortfolio Logo](https://raw.githubusercontent.com/CaioSBC/RLPortfolio/refs/heads/main/figs/rlportfolio_title.png)
 
 ------------------------------------------
 
@@ -34,7 +34,7 @@ RLPortfolio is implemented with a modular architecture in mind so that it can be
 
 The figure below shows the dynamics between those components. All of them are present in this library, but users are free to use other libraries or custom implementations.
 
-![Architecture](figs/architecture.png)
+![Architecture](https://raw.githubusercontent.com/CaioSBC/RLPortfolio/refs/heads/main/figs/architecture.png)
 
 ### Modern Standards and Libraries
 
@@ -48,7 +48,7 @@ RLPortfolio aims to be easy to use and its code is heavily documented using [Goo
 
 The algorithms implemented in the package are integrated with [Tensorboard](https://www.tensorflow.org/tensorboard/get_started), automatically providing graphs of the main metrics during training, validation and testing.
 
-![Tensorboard](figs/tensorboard.png)
+![Tensorboard](https://raw.githubusercontent.com/CaioSBC/RLPortfolio/refs/heads/main/figs/tensorboard.png)
 
 
 ### Focus on Reliability
