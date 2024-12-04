@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rlportfolio"
+version = "0.2.1"
+authors = [
+    { name = "Caio de Souza Barbosa Costa", email = "csbc326@gmail.com" },
+]
+maintainers = [
+    { name = "Caio de Souza Barbosa Costa", email = "csbc326@gmail.com" },
+]
+description = "Reinforcement learning framework for portfolio optimization tasks."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+keywords = [
+    "deep-learning",
+    "reinforcement-learning",
+    "pytorch",
+    "finance",
+    "portfolio-optimization",
+    "portfolio-management",
+    "asset-allocation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+    "gymnasium",
+    "jupyter",
+    "numpy",
+    "pandas",
+    "pytest",
+    "quantstats",
+    "scikit-learn",
+    "tensorboard",
+    "torch",
+    "torch_geometric",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "sphinx", "sphinx-rtd-theme"]
+
+[project.urls]
+Documentation = "https://rlportfolio.readthedocs.io/en/latest/"
+Homepage = "https://github.com/CaioSBC/RLPortfolio"
+Issues = "https://github.com/CaioSBC/RLPortfolio/issues"
+
+[tool.setuptools.packages.find]
+include = ["rlportfolio.*"]

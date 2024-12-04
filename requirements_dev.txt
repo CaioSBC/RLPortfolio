@@ -1,9 +1,0 @@
-numpy
-pandas
-scikit-learn
-torch
-torch_geometric
-gymnasium
-pytest
-sphinx
-sphinx-rtd-theme
