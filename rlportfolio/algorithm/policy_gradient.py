@@ -76,14 +76,14 @@ class PolicyGradient:
                 buffer is GeometricReplayBuffer.
             lr: policy neural network learning rate.
             action_noise: Name of the model to be used in the action noise. The options are
-                "logarithmic", "logarithmic_const", "dirichlet" or None. If None, no action 
+                "logarithmic", "logarithmic_const", "dirichlet" or None. If None, no action
                 noise is applied.
             action_epsilon: Noise logarithmic parameter (bigger than or equal to 0) to be
                 applied to performed actions during training. It can be a value or a
                 function whose argument is the number of training episodes/steps and that
                 outputs the noise value.
-            action_alpha: Alpha parameter (bigger than 1) to be used to create a Dirichlet 
-                distribution in the "dirichlet" noise model. It can be a value or a function 
+            action_alpha: Alpha parameter (bigger than 1) to be used to create a Dirichlet
+                distribution in the "dirichlet" noise model. It can be a value or a function
                 whose argument is the number of training episodes/steps and that outputs the
                 noise value.
             parameter_noise: Noise parameter (bigger than or equal to 0) to be applied
@@ -169,6 +169,8 @@ class PolicyGradient:
         initial_index: int = 0,
         noise_index: int | None = None,
         plot_loss_index: int | None = None,
+        update_rb: bool = True,
+        update_pvm: bool = False,
     ) -> dict[str, float | list[float]]:
         """Runs a full episode (the agent rolls through all the environment's data).
         At the end of each simuloation step, the agent can perform a number of gradient
@@ -185,6 +187,9 @@ class PolicyGradient:
                 None, an exception might be raised if action noise is callable.
             plot_loss_index: Index value to be used to log the policy loss. If None, no
                 logging is performed.
+            update_rb: If True, replay buffers will be updated after gradient ascent.
+            update_pvm: If True, portfolio vector memories will be updated after gradient 
+                ascent.
 
         Returns:
             Dictionary with episode metrics.
@@ -247,7 +252,10 @@ class PolicyGradient:
             if gradient_steps > 0 and self._can_update_policy(test=test):
                 for i in range(gradient_steps):
                     policy_loss = self._gradient_ascent(
-                        test=test, noise_index=noise_index
+                        test=test,
+                        noise_index=noise_index,
+                        update_rb=update_rb,
+                        update_pvm=update_pvm,
                     )
                     if plot_loss_index is not None:
                         self._plot_loss(policy_loss, plot_loss_index)
@@ -696,27 +704,20 @@ class PolicyGradient:
         return -policy_loss
 
     def _can_update_policy(
-        self, test: bool = False, end_of_episode: bool = False
+        self, test: bool = False
     ) -> bool:
         """Check if the conditions that allow a policy update are met.
 
         Args:
             test: If True, it uses the test parameters.
-            end_of_episode: If True, it checks the conditions of the last update of
-                an episode.
 
         Returns:
             True if policy update can happen.
         """
         buffer = self.test_buffer if test else self.train_buffer
         batch_size = self.test_batch_size if test else self.train_batch_size
-        if (
-            isinstance(buffer, SequentialReplayBuffer)
-            and end_of_episode
-            and len(buffer) > 0
-        ):
-            return True
-        if len(buffer) >= batch_size and not end_of_episode:
+
+        if len(buffer) >= batch_size:
             return True
         return False
 

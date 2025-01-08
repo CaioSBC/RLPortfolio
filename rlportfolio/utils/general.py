@@ -9,14 +9,19 @@ from typing import Any
 
 from torch.utils.data.dataset import IterableDataset
 
-from rlportfolio.algorithm.buffers import GeometricReplayBuffer, SequentialReplayBuffer
+from rlportfolio.algorithm.buffers import (
+    ReplayBuffer,
+    GeometricReplayBuffer,
+    SequentialReplayBuffer,
+    ClearingReplayBuffer,
+)
 from rlportfolio.algorithm.buffers import PortfolioVectorMemory
 
 
 class RLDataset(IterableDataset):
     def __init__(
         self,
-        buffer: SequentialReplayBuffer,
+        buffer: ReplayBuffer,
         batch_size: int,
         sample_bias: float = 1.0,
         from_start: bool = False,
@@ -51,6 +56,8 @@ class RLDataset(IterableDataset):
             yield from self.buffer.sample(
                 self.batch_size, self.sample_bias, self.from_start
             )
+        elif isinstance(self.buffer, ClearingReplayBuffer):
+            yield from self.buffer.sample()
         else:
             yield from self.buffer.sample(self.batch_size)
 
@@ -76,7 +83,7 @@ def apply_action_noise(
 
     if portfolio_size > 1:
         device = actions.device
-        
+
         # To create action diversity, a random noise is applied to actions.
         if epsilon > 0 and noise_model is not None:
             if noise_model == "logarithmic":
