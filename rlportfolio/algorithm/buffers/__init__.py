@@ -1,5 +1,7 @@
 from rlportfolio.algorithm.buffers.portfolio_vector_memory import PortfolioVectorMemory
-from rlportfolio.algorithm.buffers.sequential_replay_buffer import (
+from rlportfolio.algorithm.buffers.replay_buffers import (
+    ReplayBuffer,
+    ClearingReplayBuffer,
     SequentialReplayBuffer,
+    GeometricReplayBuffer,
 )
-from rlportfolio.algorithm.buffers.geometric_replay_buffer import GeometricReplayBuffer
