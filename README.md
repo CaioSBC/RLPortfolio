@@ -57,7 +57,13 @@ In order to be as reliable as possible, this project has a strong focus in imple
 
 ## Installation
 
-To install this package, simply clone this repository and run the following command:
+You can install this package using pip with:
+
+```bash
+$ pip install rlportfolio
+```
+
+Additionally, you can also install it by cloning this repository and running the following command:
 
 ```bash
 $ pip install .

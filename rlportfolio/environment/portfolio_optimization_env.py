@@ -71,7 +71,7 @@ class PortfolioOptimizationEnv(gym.Env):
         time_format: str | None = None,
         tic_column: str = "tic",
         tics_in_portfolio: str | list[str] = "all",
-        time_window: int = 1,
+        time_window: int = 50,
         print_metrics: bool = True,
         plot_graphs: bool = True,
         cwd: str = "./",
