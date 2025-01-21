@@ -12,13 +12,14 @@ from rlportfolio.algorithm.buffers import ClearingReplayBuffer
 
 
 class FastPolicyGradient(PolicyGradient):
-    """Class implementing policy gradient algorithm to train portfolio
-    optimization agents.
+    """Class implementing a faster version of the policy gradient algorithm to
+    train portfolio optimization agents. This version can handle faster learning
+    rates and perform fewer calculations.
 
     Note:
-        During testing, the agent is optimized through online learning.
-        The parameters of the policy is updated repeatedly after a constant
-        period of time. To disable it, set learning rate to 0.
+        During testing, the agent is optimized through online learning. The
+        parameters of the policy is updated repeatedly after a constant period of
+        time. To disable it, set the validation learning rate to 0.
 
     Attributes:
         train_env: Environment used to train the agent
@@ -33,25 +34,29 @@ class FastPolicyGradient(PolicyGradient):
         policy: type[nn.Module] = EIIE,
         policy_kwargs: dict[str, Any] = None,
         batch_size: int = 100,
-        lr: float = 1e-3,
+        lr: float = 1e-2,
+        polyak_avg_tau: float = 1,
         optimizer: type[Optimizer] = AdamW,
         use_tensorboard: bool = False,
         summary_writer_kwargs: dict[str, Any] = None,
         device: str = "cpu",
-    ):
-        """Initializes Policy Gradient for portfolio optimization.
+    ) -> FastPolicyGradient:
+        """Initializes Fast Policy Gradient for portfolio optimization.
 
         Args:
-          env: Training Environment.
-          policy: Policy architecture to be used.
-          policy_kwargs: Arguments to be used in the policy network.
-          validation_env: Validation environment.
-          batch_size: Batch size to train neural network.
-          lr: policy Neural network learning rate.
-          action_noise: Noise parameter (between 0 and 1) to be applied
-            during training.
-          optimizer: Optimizer of neural network.
-          device: Device where neural network is run.
+            env: Training environment.
+            policy: Policy architecture to be used.
+            policy_kwargs: Arguments to be used in the policy network.
+            batch_size: Batch size to train neural network.
+            lr: policy neural network learning rate.
+            optimizer: Optimizer of neural network.
+            polyak_avg_tau: Tau parameter to be used in Polyak average (bigger than or equal 
+                to 0 and smaller than or equal to 1). The bigger the parameter, the bigger 
+                new training steps influence the target policy.
+            use_tensorboard: If true, training logs will be added to tensorboard.
+            summary_writer_kwargs: Arguments to be used in PyTorch's tensorboard summary
+                writer.
+            device: Device where neural network is run.
         """
         super().__init__(
             env=env,
@@ -60,6 +65,7 @@ class FastPolicyGradient(PolicyGradient):
             replay_buffer=ClearingReplayBuffer,
             batch_size=batch_size,
             lr=lr,
+            polyak_avg_tau=polyak_avg_tau,
             optimizer=optimizer,
             use_tensorboard=use_tensorboard,
             summary_writer_kwargs=summary_writer_kwargs,
@@ -77,10 +83,42 @@ class FastPolicyGradient(PolicyGradient):
         progress_bar: str | None = "permanent",
         name: str | None = None,
     ) -> tuple[dict[str, float] | None, dict[str, float] | None]:
-        """Training sequence.
+        """Training sequence. The algorithm runs the specified number of episodes and
+        after every batch_size simulation step, a gradient ascent is performed. After
+        the gradient ascent, the replay buffer is cleared.
+
+        Note:
+            The validation step is run after every val_period episodes. This step simply
+            runs an episode of the testing environment performing a gradient ascent after
+            batch_size simulation steps, in order to apply online learning. To disable
+            online learning, set learning rate to 0 or define a very big batch size.
 
         Args:
-            episodes: Number of episodes to simulate.
+            episodes: Number of training episodes. (Training metrics are logged after
+                every episode).
+            val_period: Number of episodes to run before running a full episode in the
+                validation environment and log metrics. If None, validation will happen
+                in the end of all the training procedure.
+            val_env: Validation environment. If None, no validation is performed.
+            val_batch_size: Batch size to use in validation. If None, the training batch
+                 size is used.
+            val_lr: Learning rate to perform gradient ascent in validation. If None, the
+                training learning rate is used instead.
+            val_optimizer: Type of optimizer to use in the validation. If None, the same
+                type used in training is set.
+            progress_bar: If "permanent", a progress bar is displayed and is kept when
+                completed. If "temporary", a progress bar is displayed but is deleted
+                when completed. If None (or any other value), no progress bar is
+                displayed.
+            name: Name of the training sequence (it is displayed in the progress bar).
+
+        Returns:
+            The following tuple is returned: (metrics, val_metrics).
+
+            metrics: Dictionary with metrics of the agent performance in the training
+                environment. If None, no training was performed.
+            val_metrics: Dictionary with metrics of the agent performance in the
+                validation environment. If None, no validation was performed.
         """
         val_period = episodes if val_period is None else val_period
 
@@ -145,11 +183,11 @@ class FastPolicyGradient(PolicyGradient):
         batch_size: int | None = 10,
         lr: int | None = None,
         optimizer: type[Optimizer] | None = None,
-        plot_index: int | None = None
+        plot_index: int | None = None,
     ) -> dict[str, float]:
         """Tests the policy with online learning. The test sequence runs an episode of
         the environment and performs a gradient ascent after batch_size simulation steps
-        in order to perform online learning. To disable online learning, set learning 
+        in order to perform online learning. To disable online learning, set learning
         rate to 0 or set a very big batch size.
 
         Args:
@@ -174,8 +212,9 @@ class FastPolicyGradient(PolicyGradient):
             Dictionary with episode metrics.
         """
 
-        super().test(
+        return super().test(
             env,
+            update_buffer=False,
             policy=policy,
             replay_buffer=ClearingReplayBuffer,
             batch_size=batch_size,

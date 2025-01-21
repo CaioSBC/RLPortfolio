@@ -256,3 +256,29 @@ def combine_portfolio_vector_memories(
     new_pvm.memory = new_memory
     new_pvm.index = new_index
     return new_pvm
+
+
+def polyak_average(
+    net: torch.nn.Module, target_net: torch.nn.Module, tau: float = 0.01
+) -> torch.nn.Module:
+    """Applies polyak average to incrementally update target net.
+
+    Args:
+        net: trained neural network.
+        target_net: target neural network.
+        tau: update rate.
+
+    Returns:
+        Target neural network with new weights.
+    """
+    if tau < 0 or tau > 1:
+        raise ValueError(
+            "Invalid tau value for Polyak Average. It can not be negative or bigger than one."
+        )
+    if tau == 1:
+        return copy.deepcopy(net)
+    if tau == 0:
+        return target_net
+    for qp, tp in zip(net.parameters(), target_net.parameters()):
+        tp.data.copy_(tau * qp.data + (1 - tau) * tp.data)
+    return target_net

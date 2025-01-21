@@ -20,6 +20,7 @@ from rlportfolio.utils import combine_replay_buffers
 from rlportfolio.utils import torch_to_numpy
 from rlportfolio.utils import numpy_to_torch
 from rlportfolio.utils import RLDataset
+from rlportfolio.utils import polyak_average
 
 
 class PolicyGradient:
@@ -49,6 +50,7 @@ class PolicyGradient:
         sample_bias: float = 1.0,
         sample_from_start: bool = False,
         lr: float = 1e-3,
+        polyak_avg_tau: float = 1,
         action_noise: str | None = None,
         action_epsilon: float | Callable[[int], float] = 0,
         action_alpha: float | Callable[[int], float] = 1.0,
@@ -69,12 +71,15 @@ class PolicyGradient:
             replay_buffer: Class of replay buffer to be used to sample experiences in
                 training.
             batch_size: Batch size to train neural network.
-            sample_bias: Probability of success of a trial in a geometric distribution.
-                Only used if buffer is GeometricReplayBuffer.
-            sample_from_start: If True, will choose a sequence starting from the start
-                of the buffer. Otherwise, it will start from the end. Only used if
-                buffer is GeometricReplayBuffer.
+            sample_bias: Probability of success of a trial in a geometric distribution. Only
+                used if buffer is GeometricReplayBuffer.
+            sample_from_start: If True, will choose a sequence starting from the start of the
+                buffer. Otherwise, it will start from the end. Only used if buffer is
+                GeometricReplayBuffer.
             lr: policy neural network learning rate.
+            polyak_avg_tau: Tau parameter to be used in Polyak average (bigger than or equal
+                to 0 and smaller than or equal to 1). The bigger the parameter, the bigger
+                new training steps influence the target policy.
             action_noise: Name of the model to be used in the action noise. The options are
                 "logarithmic", "logarithmic_const", "dirichlet" or None. If None, no action
                 noise is applied.
@@ -102,6 +107,7 @@ class PolicyGradient:
         self.sample_bias = sample_bias
         self.sample_from_start = sample_from_start
         self.lr = lr
+        self.polyak_avg_tau = polyak_avg_tau
         self.action_noise = action_noise
         self.action_epsilon = action_epsilon
         self.action_alpha = action_alpha
@@ -145,6 +151,7 @@ class PolicyGradient:
 
         # neural networks
         self.train_policy = self.policy(**self.policy_kwargs).to(self.device)
+        self.target_train_policy = copy.deepcopy(self.train_policy)
         self.train_optimizer = self.optimizer(
             self.train_policy.parameters(), lr=self.lr
         )
@@ -188,7 +195,7 @@ class PolicyGradient:
             plot_loss_index: Index value to be used to log the policy loss. If None, no
                 logging is performed.
             update_rb: If True, replay buffers will be updated after gradient ascent.
-            update_pvm: If True, portfolio vector memories will be updated after gradient 
+            update_pvm: If True, portfolio vector memories will be updated after gradient
                 ascent.
 
         Returns:
@@ -224,9 +231,8 @@ class PolicyGradient:
             )
 
             # define action
-            action = torch_to_numpy(
-                self.train_policy(obs_batch, last_action_batch), squeeze=True
-            )
+            policy = self.test_policy if test else self.target_train_policy
+            action = torch_to_numpy(policy(obs_batch, last_action_batch), squeeze=True)
 
             # update portfolio vector memory
             self.test_pvm.add(action) if test else self.train_pvm.add(action)
@@ -451,6 +457,7 @@ class PolicyGradient:
                         val_env,
                         gradient_steps=val_gradient_steps,
                         use_train_buffer=val_use_train_buffer,
+                        update_buffer=True,
                         policy=None,
                         replay_buffer=val_replay_buffer,
                         batch_size=val_batch_size,
@@ -505,7 +512,7 @@ class PolicyGradient:
         self.test_env = env
 
         # process None arguments
-        policy = self.train_policy if policy is None else policy
+        policy = self.target_train_policy if policy is None else policy
         replay_buffer = self.replay_buffer if replay_buffer is None else replay_buffer
         batch_size = self.batch_size if batch_size is None else batch_size
         sample_bias = self.sample_bias if sample_bias is None else sample_bias
@@ -541,6 +548,7 @@ class PolicyGradient:
         env: gym.Env,
         gradient_steps: int = 1,
         use_train_buffer: bool = False,
+        update_buffer: bool = True,
         policy: nn.Module | None = None,
         replay_buffer: SequentialReplayBuffer | None = None,
         batch_size: int | None = None,
@@ -562,6 +570,7 @@ class PolicyGradient:
             use_train_buffer: If True, the test period also makes use of experiences in
                 the training replay buffer to perform online training. Set this option
                 to True if the test period is immediately after the training period.
+            update_buffer: If True, replay buffers will be updated after gradient ascent.
             policy: Policy architecture to be used. If None, it will use the training
                 architecture.
             replay_buffer: Class of replay buffer to be used. If None, it will use the
@@ -603,7 +612,10 @@ class PolicyGradient:
         # run episode performing gradient ascent after each simulation step (online learning)
         initial_index = self.train_buffer.capacity if use_train_buffer else 0
         metrics = self._run_episode(
-            test=True, gradient_steps=gradient_steps, initial_index=initial_index
+            test=True,
+            gradient_steps=gradient_steps,
+            initial_index=initial_index,
+            update_rb=update_buffer,
         )
 
         # log test metrics
@@ -698,14 +710,16 @@ class PolicyGradient:
             policy_loss.backward()
             self.train_optimizer.step()
 
+            self.target_train_policy = polyak_average(
+                self.train_policy, self.target_train_policy, self.polyak_avg_tau
+            )
+
         # actions can be updated in the buffers and memories
         self._update_buffers(actions, indexes, test, update_rb, update_pvm)
 
         return -policy_loss
 
-    def _can_update_policy(
-        self, test: bool = False
-    ) -> bool:
+    def _can_update_policy(self, test: bool = False) -> bool:
         """Check if the conditions that allow a policy update are met.
 
         Args:
