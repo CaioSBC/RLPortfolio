@@ -137,6 +137,7 @@ class EpisodicPolicyGradient(PolicyGradient):
                     val_env,
                     gradient_steps=val_gradient_steps,
                     use_train_buffer=val_use_train_buffer,
+                    update_buffer=True,
                     policy=None,
                     replay_buffer=val_replay_buffer,
                     batch_size=val_batch_size,

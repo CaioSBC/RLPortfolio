@@ -9,14 +9,19 @@ from typing import Any
 
 from torch.utils.data.dataset import IterableDataset
 
-from rlportfolio.algorithm.buffers import GeometricReplayBuffer, SequentialReplayBuffer
+from rlportfolio.algorithm.buffers import (
+    ReplayBuffer,
+    GeometricReplayBuffer,
+    SequentialReplayBuffer,
+    ClearingReplayBuffer,
+)
 from rlportfolio.algorithm.buffers import PortfolioVectorMemory
 
 
 class RLDataset(IterableDataset):
     def __init__(
         self,
-        buffer: SequentialReplayBuffer,
+        buffer: ReplayBuffer,
         batch_size: int,
         sample_bias: float = 1.0,
         from_start: bool = False,
@@ -51,6 +56,8 @@ class RLDataset(IterableDataset):
             yield from self.buffer.sample(
                 self.batch_size, self.sample_bias, self.from_start
             )
+        elif isinstance(self.buffer, ClearingReplayBuffer):
+            yield from self.buffer.sample()
         else:
             yield from self.buffer.sample(self.batch_size)
 
@@ -76,7 +83,7 @@ def apply_action_noise(
 
     if portfolio_size > 1:
         device = actions.device
-        
+
         # To create action diversity, a random noise is applied to actions.
         if epsilon > 0 and noise_model is not None:
             if noise_model == "logarithmic":
@@ -249,3 +256,29 @@ def combine_portfolio_vector_memories(
     new_pvm.memory = new_memory
     new_pvm.index = new_index
     return new_pvm
+
+
+def polyak_average(
+    net: torch.nn.Module, target_net: torch.nn.Module, tau: float = 0.01
+) -> torch.nn.Module:
+    """Applies polyak average to incrementally update target net.
+
+    Args:
+        net: trained neural network.
+        target_net: target neural network.
+        tau: update rate.
+
+    Returns:
+        Target neural network with new weights.
+    """
+    if tau < 0 or tau > 1:
+        raise ValueError(
+            "Invalid tau value for Polyak Average. It can not be negative or bigger than one."
+        )
+    if tau == 1:
+        return net
+    if tau == 0:
+        return target_net
+    for qp, tp in zip(net.parameters(), target_net.parameters()):
+        tp.data.copy_(tau * qp.data + (1 - tau) * tp.data)
+    return target_net

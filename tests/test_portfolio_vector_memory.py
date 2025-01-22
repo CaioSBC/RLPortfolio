@@ -38,6 +38,7 @@ environment_dict = PortfolioOptimizationEnv(
     1000,
     features=["feature_1"],
     valuation_feature="feature_1",
+    time_format="%Y-%m-%d",
     time_window=1,
     return_last_action=True,
     print_metrics=False,
