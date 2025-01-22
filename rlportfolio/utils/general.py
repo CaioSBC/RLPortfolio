@@ -276,7 +276,7 @@ def polyak_average(
             "Invalid tau value for Polyak Average. It can not be negative or bigger than one."
         )
     if tau == 1:
-        return copy.deepcopy(net)
+        return net
     if tau == 0:
         return target_net
     for qp, tp in zip(net.parameters(), target_net.parameters()):
