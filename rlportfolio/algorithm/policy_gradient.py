@@ -50,6 +50,8 @@ class PolicyGradient:
         sample_bias: float = 1.0,
         sample_from_start: bool = False,
         lr: float = 1e-3,
+        objective_function: str = "fapv",
+        objective_lambda: float = 0,
         polyak_avg_tau: float = 1,
         action_noise: str | None = None,
         action_epsilon: float | Callable[[int], float] = 0,
@@ -77,6 +79,10 @@ class PolicyGradient:
                 buffer. Otherwise, it will start from the end. Only used if buffer is
                 GeometricReplayBuffer.
             lr: policy neural network learning rate.
+            objective_function: Objective function to be used in the optimization process. The
+                options are "fapv" and "fapv_ratio".
+            objective_lambda: Parameter to be used to consider the standard deviation of the 
+                fapv in the objective function.
             polyak_avg_tau: Tau parameter to be used in Polyak average (bigger than or equal
                 to 0 and smaller than or equal to 1). The bigger the parameter, the bigger
                 new training steps influence the target policy.
@@ -107,6 +113,8 @@ class PolicyGradient:
         self.sample_bias = sample_bias
         self.sample_from_start = sample_from_start
         self.lr = lr
+        self.objective_function = objective_function
+        self.objective_lambda = objective_lambda
         self.polyak_avg_tau = polyak_avg_tau
         self.action_noise = action_noise
         self.action_epsilon = action_epsilon
@@ -696,9 +704,22 @@ class PolicyGradient:
             )
 
         # define policy loss (negative for gradient ascent)
-        policy_loss = -torch.mean(
-            torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
-        )
+        # fapv
+        # policy_loss = -torch.mean(
+        #     torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+        # )
+
+        # sharpe
+        if self.objective_function == "fapv":
+            rate = torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+            policy_loss = - (torch.mean(rate) - self.objective_lambda * torch.std(rate))
+        elif self.objective_function == "fapv_ratio":
+            rate = torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+            policy_loss = - torch.mean(rate)/(1 + self.objective_lambda * torch.std(rate))
+        else:
+            policy_loss = -torch.mean(
+                torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+            )
 
         # update policy network
         if test:
