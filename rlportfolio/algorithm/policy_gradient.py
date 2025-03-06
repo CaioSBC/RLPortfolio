@@ -45,6 +45,8 @@ class PolicyGradient:
         env: gym.Env,
         policy: type[nn.Module] = EIIE,
         policy_kwargs: dict[str, Any] = None,
+        q_net: type[nn.Module] = None,
+        q_net_kwargs: dict[str, Any] = None,
         replay_buffer: type[SequentialReplayBuffer] = GeometricReplayBuffer,
         batch_size: int = 100,
         sample_bias: float = 1.0,
@@ -81,7 +83,7 @@ class PolicyGradient:
             lr: policy neural network learning rate.
             objective_function: Objective function to be used in the optimization process. The
                 options are "fapv" and "fapv_ratio".
-            objective_lambda: Parameter to be used to consider the standard deviation of the 
+            objective_lambda: Parameter to be used to consider the standard deviation of the
                 fapv in the objective function.
             polyak_avg_tau: Tau parameter to be used in Polyak average (bigger than or equal
                 to 0 and smaller than or equal to 1). The bigger the parameter, the bigger
@@ -107,8 +109,15 @@ class PolicyGradient:
                 writer.
             device: Device where neural network is run.
         """
+        if q_net is not None:
+            self.mode = "actor_critic"
+        else:
+            self.mode = "optimization"
+
         self.policy = policy
         self.policy_kwargs = {} if policy_kwargs is None else policy_kwargs
+        self.q_net = q_net
+        self.q_net_kwargs = {} if q_net_kwargs is None else q_net_kwargs
         self.batch_size = batch_size
         self.sample_bias = sample_bias
         self.sample_from_start = sample_from_start
@@ -163,6 +172,14 @@ class PolicyGradient:
         self.train_optimizer = self.optimizer(
             self.train_policy.parameters(), lr=self.lr
         )
+
+        # when using a q_network
+        if self.mode == "actor_critic":
+            self.train_q_net = self.q_net(**self.q_net_kwargs).to(self.device)
+            self.target_train_q_net = copy.deepcopy(self.train_q_net)
+            self.train_q_optimizer = self.optimizer(
+                self.train_q_net.parameters(), lr=self.lr
+            )
 
         # replay buffer and portfolio vector memory
         self.train_batch_size = self.batch_size
@@ -251,7 +268,10 @@ class PolicyGradient:
             )
 
             # add experience to replay buffer
-            exp = (obs, last_action, info["price_variation"], index)
+            if self.mode == "actor_critic":
+                exp = (obs, next_obs, last_action, done, info["price_variation"], index)
+            else:
+                exp = (obs, last_action, info["price_variation"], index)
             self.test_buffer.add(exp) if test else self.train_buffer.add(exp)
             index += 1
 
@@ -491,6 +511,7 @@ class PolicyGradient:
         env: gym.Env,
         use_train_buffer: bool,
         policy: nn.Module,
+        q_net: nn.Module,
         replay_buffer: type[SequentialReplayBuffer],
         batch_size: int,
         sample_bias: float,
@@ -519,8 +540,9 @@ class PolicyGradient:
         # environment
         self.test_env = env
 
-        # process None arguments
+        # process other None arguments
         policy = self.target_train_policy if policy is None else policy
+        q_net = self.target_train_q_net if q_net is None and self.mode == "actor_critic" else q_net
         replay_buffer = self.replay_buffer if replay_buffer is None else replay_buffer
         batch_size = self.batch_size if batch_size is None else batch_size
         sample_bias = self.sample_bias if sample_bias is None else sample_bias
@@ -533,6 +555,11 @@ class PolicyGradient:
         # define policy
         self.test_policy = copy.deepcopy(policy).to(self.device)
         self.test_optimizer = optimizer(self.test_policy.parameters(), lr=lr)
+
+        # define q_net (if needed)
+        if q_net is not None:
+            self.test_q_net = copy.deepcopy(q_net).to(self.device)
+            self.test_q_optimizer = optimizer(self.test_policy.parameters(), lr=lr)
 
         # replay buffer and portfolio vector memory
         self.test_batch_size = batch_size
@@ -558,6 +585,7 @@ class PolicyGradient:
         use_train_buffer: bool = False,
         update_buffer: bool = True,
         policy: nn.Module | None = None,
+        q_net: nn.Module | None = None,
         replay_buffer: SequentialReplayBuffer | None = None,
         batch_size: int | None = None,
         sample_bias: float | None = None,
@@ -609,6 +637,7 @@ class PolicyGradient:
             env,
             use_train_buffer,
             policy,
+            q_net,
             replay_buffer,
             batch_size,
             sample_bias,
@@ -655,14 +684,26 @@ class PolicyGradient:
             Negative of policy loss (since it's gradient ascent).
         """
         # get batch data from dataloader
-        obs, last_actions, price_variations, indexes = (
-            next(iter(self.test_dataloader))
-            if test
-            else next(iter(self.train_dataloader))
-        )
-        obs = obs.to(self.device)
-        last_actions = last_actions.to(self.device)
-        price_variations = price_variations.to(self.device)
+        if self.mode == "actor_critic":
+            obs, next_obs, last_actions, price_variations, indexes = (
+                next(iter(self.test_dataloader))
+                if test
+                else next(iter(self.train_dataloader))
+            )
+            obs = obs.to(self.device)
+            next_obs = next_obs.to(self.device)
+            last_actions = last_actions.to(self.device)
+            dones = dones.unsqueeze(1).bool().to(self.device)
+            price_variations = price_variations.to(self.device)
+        else:
+            obs, last_actions, price_variations, indexes = (
+                next(iter(self.test_dataloader))
+                if test
+                else next(iter(self.train_dataloader))
+            )
+            obs = obs.to(self.device)
+            last_actions = last_actions.to(self.device)
+            price_variations = price_variations.to(self.device)
 
         # define agent's actions
         if test:
@@ -703,23 +744,61 @@ class PolicyGradient:
                 torch.abs(actions[:, 1:] - last_actions[:, 1:]), dim=1, keepdim=True
             )
 
-        # define policy loss (negative for gradient ascent)
-        # fapv
-        # policy_loss = -torch.mean(
-        #     torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
-        # )
+        if self.mode == "actor_critic":
+            # DEBUG
 
-        # sharpe
-        if self.objective_function == "fapv":
-            rate = torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
-            policy_loss = - (torch.mean(rate) - self.objective_lambda * torch.std(rate))
-        elif self.objective_function == "fapv_ratio":
-            rate = torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
-            policy_loss = - torch.mean(rate)/(1 + self.objective_lambda * torch.std(rate))
-        else:
-            policy_loss = -torch.mean(
-                torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+            # generate q-values. Detach actions to train q_net and policy separately.
+            action_values = self.train_q_net(obs, actions.detach(), last_actions)
+            next_actions = self.target_train_policy(next_obs, actions.detach())
+            next_action_values = self.target_train_q_net(
+                next_obs, next_actions.detach(), actions.detach()
             )
+
+            # calculate rewards
+            rewards = torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+
+            # Q-value = 0 if it is a terminal state
+            next_action_values[dones] = 0.0
+
+            # calculate q-value
+            expected_action_values = rewards + 0.99 * next_action_values
+            q_loss = torch.nn.functional.smooth_l1_loss(
+                action_values, expected_action_values
+            )
+
+            # update q_value network
+            if test:
+                self.test_q_net.zero_grad()
+                q_loss.backward()
+                self.test_q_optimizer.step()
+            else:
+                self.train_q_net.zero_grad()
+                q_loss.backward()
+                self.train_q_optimizer.step()
+
+                self.target_train_q_net = polyak_average(
+                    self.train_q_net, self.target_train_q_net, self.polyak_avg_tau
+                )
+
+            # calculate policy loss (negative for gradient ascent)
+            policy_loss = -self.train_q_net(obs, actions, last_actions)
+
+        else:
+            # define policy loss (negative for gradient ascent)
+            if self.objective_function == "fapv":
+                rate = torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+                policy_loss = -(
+                    torch.mean(rate) - self.objective_lambda * torch.std(rate)
+                )
+            elif self.objective_function == "fapv_ratio":
+                rate = torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+                policy_loss = -torch.mean(rate) / (
+                    1 + self.objective_lambda * torch.std(rate)
+                )
+            else:
+                policy_loss = -torch.mean(
+                    torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+                )
 
         # update policy network
         if test:
