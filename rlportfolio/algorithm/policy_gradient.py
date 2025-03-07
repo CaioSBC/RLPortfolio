@@ -797,11 +797,11 @@ class PolicyGradient:
             # update q_value network
             if test:
                 self.test_q_net.zero_grad()
-                q_loss.backward(retain_graph=True)
+                q_loss.backward()
                 self.test_q_optimizer.step()
             else:
                 self.train_q_net.zero_grad()
-                q_loss.backward(retain_graph=True)
+                q_loss.backward()
                 self.train_q_optimizer.step()
 
                 self.target_train_q_net = polyak_average(
@@ -809,6 +809,7 @@ class PolicyGradient:
                 )
 
             # calculate policy loss (negative for gradient ascent)
+            actions = self.test_policy(obs, last_actions) if test else self.train_policy(obs, last_actions)
             policy_loss = -torch.mean(self.train_q_net(obs, actions, last_actions))
 
         else:
