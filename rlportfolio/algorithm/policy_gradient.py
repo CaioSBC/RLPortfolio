@@ -189,7 +189,7 @@ class PolicyGradient:
             self.train_q_net = self.q_net(**self.q_net_kwargs).to(self.device)
             self.target_train_q_net = copy.deepcopy(self.train_q_net)
             self.train_q_optimizer = self.optimizer(
-                self.train_q_net.parameters(), lr=self.lr
+                self.train_q_net.parameters(), lr=1e-3
             )
 
         # replay buffer and portfolio vector memory
@@ -296,14 +296,14 @@ class PolicyGradient:
             # update policy networks
             if gradient_steps > 0 and self._can_update_policy(test=test):
                 for i in range(gradient_steps):
-                    policy_loss = self._gradient_ascent(
+                    loss = self._gradient_ascent(
                         test=test,
                         noise_index=noise_index,
                         update_rb=update_rb,
                         update_pvm=update_pvm,
                     )
                     if plot_loss_index is not None:
-                        self._plot_loss(policy_loss, plot_loss_index)
+                        self._plot_loss(loss, plot_loss_index)
                         plot_loss_index += 1
 
             obs = next_obs
@@ -471,10 +471,10 @@ class PolicyGradient:
             pbar.colour = "white"
             pbar.set_description("{}Training agent".format(preffix))
             if self._can_update_policy():
-                policy_loss = self._gradient_ascent(noise_index=step)
+                loss = self._gradient_ascent(noise_index=step)
 
                 # plot policy loss in tensorboard
-                self._plot_loss(policy_loss, step)
+                self._plot_loss(loss, step)
 
                 # run episode to log metrics
                 if step % logging_period == 0:
@@ -759,12 +759,14 @@ class PolicyGradient:
                 torch.abs(actions[:, 1:] - last_actions[:, 1:]), dim=1, keepdim=True
             )
 
+        q_loss = None
+
         if self.mode == "actor_critic":
             # generate q-values. Detach actions to train q_net and policy separately.
-            action_values = (
-                self.test_q_net(obs, actions.detach(), last_actions)
+            q_values = (
+                self.test_q_net(obs, actions, last_actions)
                 if test
-                else self.train_q_net(obs, actions.detach(), last_actions)
+                else self.train_q_net(obs, actions, last_actions)
             )
             with torch.no_grad():
                 next_actions = (
@@ -772,7 +774,7 @@ class PolicyGradient:
                     if test
                     else self.target_train_policy(next_obs, actions.detach())
                 )
-                next_action_values = (
+                next_q_values = (
                     self.test_q_net(next_obs, next_actions.detach(), actions.detach())
                     if test
                     else self.target_train_q_net(
@@ -781,18 +783,22 @@ class PolicyGradient:
                 )
 
             # calculate rewards
-            rewards = torch.log(
+            rewards = 100 * torch.log(
                 torch.sum(actions * price_variations * trf_mu, dim=1, keepdim=True)
             )
 
+            self.summary_writer.add_scalar(
+                "Mean Reward",
+                rewards.mean(),
+                noise_index,
+            )
+
             # Q-value = 0 if it is a terminal state
-            next_action_values[dones] = 0.0
+            next_q_values[dones] = 0.0
 
             # calculate q-value
-            expected_action_values = rewards + 0.99 * next_action_values
-            q_loss = torch.nn.functional.smooth_l1_loss(
-                action_values, expected_action_values
-            )
+            expected_q_values = rewards + 0.99 * next_q_values
+            q_loss = torch.nn.functional.smooth_l1_loss(q_values, expected_q_values)
 
             # update q_value network
             if test:
@@ -809,8 +815,16 @@ class PolicyGradient:
                 )
 
             # calculate policy loss (negative for gradient ascent)
-            actions = self.test_policy(obs, last_actions) if test else self.train_policy(obs, last_actions)
-            policy_loss = -torch.mean(self.train_q_net(obs, actions, last_actions))
+            actions = (
+                self.test_policy(obs, last_actions)
+                if test
+                else self.train_policy(obs, last_actions)
+            )
+            policy_loss = (
+                -torch.mean(self.test_q_net(obs, actions, last_actions))
+                if test
+                else -torch.mean(self.train_q_net(obs, actions, last_actions))
+            )
 
         else:
             # define policy loss (negative for gradient ascent)
@@ -846,7 +860,7 @@ class PolicyGradient:
         # actions can be updated in the buffers and memories
         self._update_buffers(actions, indexes, test, update_rb, update_pvm)
 
-        return -policy_loss
+        return -policy_loss, q_loss
 
     def _can_update_policy(self, test: bool = False) -> bool:
         """Check if the conditions that allow a policy update are met.
@@ -917,8 +931,13 @@ class PolicyGradient:
             loss: The value of the policy loss.
             plot_index: Index (x-axis) to be used to plot the loss
         """
+        policy_loss, critic_loss = loss
         if self.summary_writer:
-            self.summary_writer.add_scalar("Loss/Train", loss, plot_index)
+            self.summary_writer.add_scalar("Train Loss/Policy", policy_loss, plot_index)
+            if critic_loss is not None:
+                self.summary_writer.add_scalar(
+                    "Train Loss/Critic", critic_loss, plot_index
+                )
 
     def _plot_metrics(
         self, metrics: dict[str, float], plot_index: int, test: bool
