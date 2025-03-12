@@ -169,6 +169,39 @@ class PolicyGradient:
             dataset=dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True
         )
 
+    def _setup_episode(
+        self,
+        test: bool = False,
+        plot_loss_index: int | None = None,
+    ) -> tuple[np.ndarray, dict[str, Any], int]:
+        """Initializes the initial conditions of an episode run.
+        
+        Args:
+            test: If True, the episode is running during a test routine.
+            plot_loss_index: Index value to be used to log the policy loss.
+
+        Returns:
+            The observation after resetting the environment, a dictionary with
+            information about the initial state and an adjusted loss index.
+        """
+        if test:
+            obs, info = self.test_env.reset()  # observation
+            self.test_pvm.reset()  # reset portfolio vector memory
+            plot_loss_index = (  # initial value of log loss index
+                (plot_loss_index - 1) * self.test_env.episode_length + 1
+                if plot_loss_index is not None
+                else plot_loss_index
+            )
+        else:
+            obs, info = self.train_env.reset()  # observation
+            self.train_pvm.reset()  # reset portfolio vector memory
+            plot_loss_index = (
+                (plot_loss_index - 1) * self.train_env.episode_length + 1
+                if plot_loss_index is not None
+                else plot_loss_index
+            )
+        return obs, info, plot_loss_index
+
     def _run_episode(
         self,
         test: bool = False,
@@ -178,7 +211,7 @@ class PolicyGradient:
         plot_loss_index: int | None = None,
         update_rb: bool = True,
         update_pvm: bool = False,
-    ) -> dict[str, float | list[float]]:
+    ) -> tuple[dict[str, float | list[float]], int]:
         """Runs a full episode (the agent rolls through all the environment's data).
         At the end of each simuloation step, the agent can perform a number of gradient
         ascent operations if specified in the arguments.
@@ -199,24 +232,9 @@ class PolicyGradient:
                 ascent.
 
         Returns:
-            Dictionary with episode metrics.
+            Dictionary with episode metrics and index used to plot loss.
         """
-        if test:
-            obs, info = self.test_env.reset()  # observation
-            self.test_pvm.reset()  # reset portfolio vector memory
-            plot_loss_index = (  # initial value of log loss index
-                (plot_loss_index - 1) * self.test_env.episode_length + 1
-                if plot_loss_index is not None
-                else plot_loss_index
-            )
-        else:
-            obs, info = self.train_env.reset()  # observation
-            self.train_pvm.reset()  # reset portfolio vector memory
-            plot_loss_index = (
-                (plot_loss_index - 1) * self.train_env.episode_length + 1
-                if plot_loss_index is not None
-                else plot_loss_index
-            )
+        obs, info, plot_loss_index = self._setup_episode(test, plot_loss_index)
         done = False
         metrics = {"rewards": []}
         index = initial_index
@@ -269,7 +287,7 @@ class PolicyGradient:
 
             obs = next_obs
 
-        return metrics
+        return metrics, plot_loss_index
 
     def _tqdm_arguments(
         self, progress_bar: str | None, name: str | None
@@ -441,7 +459,7 @@ class PolicyGradient:
                 if step % logging_period == 0:
                     pbar.colour = "blue"
                     pbar.set_description("{}Logging metrics".format(preffix))
-                    metrics = self._run_episode()
+                    metrics, _ = self._run_episode()
                     self._plot_metrics(
                         metrics, plot_index=int(step / logging_period), test=False
                     )
@@ -611,7 +629,7 @@ class PolicyGradient:
 
         # run episode performing gradient ascent after each simulation step (online learning)
         initial_index = self.train_buffer.capacity if use_train_buffer else 0
-        metrics = self._run_episode(
+        metrics, _ = self._run_episode(
             test=True,
             gradient_steps=gradient_steps,
             initial_index=initial_index,

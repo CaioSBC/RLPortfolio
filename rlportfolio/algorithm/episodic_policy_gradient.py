@@ -120,7 +120,7 @@ class EpisodicPolicyGradient(PolicyGradient):
             # run and log episode
             pbar.colour = "white"
             pbar.set_description("{}Training agent".format(preffix))
-            metrics = self._run_episode(
+            metrics, _ = self._run_episode(
                 gradient_steps=gradient_steps,
                 noise_index=episode,
                 plot_loss_index=episode,

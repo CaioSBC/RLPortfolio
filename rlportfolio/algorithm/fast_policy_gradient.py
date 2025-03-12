@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+import numpy as np
 import gymnasium as gym
 from torch import nn
 from torch.optim import AdamW, Optimizer
@@ -34,6 +36,7 @@ class FastPolicyGradient(PolicyGradient):
         policy: type[nn.Module] = EIIE,
         policy_kwargs: dict[str, Any] = None,
         batch_size: int = 100,
+        batch_var: float = 0,
         lr: float = 1e-2,
         polyak_avg_tau: float = 1,
         optimizer: type[Optimizer] = AdamW,
@@ -48,10 +51,13 @@ class FastPolicyGradient(PolicyGradient):
             policy: Policy architecture to be used.
             policy_kwargs: Arguments to be used in the policy network.
             batch_size: Batch size to train neural network.
+            batch_var: Batch size random variation parameter (bigger than or equal to 0 and
+                smaller than or equal to 1). The batch size of each optimization step is a
+                random value between [batch_size - batch_var, batch_size + batch_var].
             lr: policy neural network learning rate.
             optimizer: Optimizer of neural network.
-            polyak_avg_tau: Tau parameter to be used in Polyak average (bigger than or equal 
-                to 0 and smaller than or equal to 1). The bigger the parameter, the bigger 
+            polyak_avg_tau: Tau parameter to be used in Polyak average (bigger than or equal
+                to 0 and smaller than or equal to 1). The bigger the parameter, the bigger
                 new training steps influence the target policy.
             use_tensorboard: If true, training logs will be added to tensorboard.
             summary_writer_kwargs: Arguments to be used in PyTorch's tensorboard summary
@@ -71,6 +77,8 @@ class FastPolicyGradient(PolicyGradient):
             summary_writer_kwargs=summary_writer_kwargs,
             device=device,
         )
+        self.batch_var = batch_var
+        self.cur_batch_size = None
 
     def train(
         self,
@@ -128,6 +136,7 @@ class FastPolicyGradient(PolicyGradient):
         # create metric variables
         metrics = None
         val_metrics = None
+        plot_loss_index = 0
 
         # Start training
         for episode in (
@@ -141,10 +150,10 @@ class FastPolicyGradient(PolicyGradient):
             # run and log episode
             pbar.colour = "white"
             pbar.set_description("{}Training agent".format(preffix))
-            metrics = self._run_episode(
+            metrics, plot_loss_index = self._run_episode(
                 gradient_steps=1,
                 noise_index=episode,
-                plot_loss_index=episode,
+                plot_loss_index=plot_loss_index,
                 update_rb=False,
             )
             self._plot_metrics(metrics, plot_index=episode, test=False)
@@ -153,7 +162,9 @@ class FastPolicyGradient(PolicyGradient):
 
             # if there are remaining episodes in the buffer, update policy
             if self._can_update_policy(test=False, end_of_episode=True):
-                self._gradient_ascent(noise_index=episode, update_rb=False)
+                policy_loss = self._gradient_ascent(noise_index=episode, update_rb=False)
+                self._plot_loss(policy_loss, plot_loss_index)
+                plot_loss_index += 1
 
             # validation step
             if val_env and episode % val_period == 0:
@@ -222,6 +233,29 @@ class FastPolicyGradient(PolicyGradient):
             optimizer=optimizer,
             plot_index=plot_index,
         )
+    
+    def _setup_episode(
+        self,
+        test: bool = False,
+        plot_loss_index: int | None = None,
+    ) -> tuple[np.ndarray, dict[str, Any], int]:
+        """Initializes the initial conditions of an episode run.
+        
+        Args:
+            test: If True, the episode is running during a test routine.
+            plot_loss_index: Index value to be used to log the policy loss.
+
+        Returns:
+            The observation after resetting the environment, a dictionary with
+            information about the initial state and an adjusted loss index.
+        """
+        if test:
+            obs, info = self.test_env.reset()  # observation
+            self.test_pvm.reset()  # reset portfolio vector memory
+        else:
+            obs, info = self.train_env.reset()  # observation
+            self.train_pvm.reset()  # reset portfolio vector memory
+        return obs, info, plot_loss_index
 
     def _can_update_policy(
         self, test: bool = False, end_of_episode: bool = False
@@ -237,6 +271,18 @@ class FastPolicyGradient(PolicyGradient):
             True if policy update can happen.
         """
         buffer = self.test_buffer if test else self.train_buffer
+        batch_size = self.test_batch_size if test else self.train_batch_size
+
+        if self.cur_batch_size is None:
+            if test:
+                self.cur_batch_size = batch_size
+            else:
+                rand_size = random.randint(round(-0.5 * batch_size), round(0.5 * batch_size))
+                self.cur_batch_size = batch_size + rand_size
+
         if end_of_episode and len(buffer) > 0:
             return True
-        return super()._can_update_policy(test=test)
+        if len(buffer) >= self.cur_batch_size:
+            self.cur_batch_size = None
+            return True
+        return False
