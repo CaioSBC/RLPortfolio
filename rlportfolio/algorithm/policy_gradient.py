@@ -189,7 +189,7 @@ class PolicyGradient:
             self.train_q_net = self.q_net(**self.q_net_kwargs).to(self.device)
             self.target_train_q_net = copy.deepcopy(self.train_q_net)
             self.train_q_optimizer = self.optimizer(
-                self.train_q_net.parameters(), lr=1e-3
+                self.train_q_net.parameters(), lr=5e-4
             )
 
         # replay buffer and portfolio vector memory
@@ -723,6 +723,7 @@ class PolicyGradient:
         # define agent's actions
         if test:
             actions = self.test_policy(obs, last_actions)
+            noiseless_actions = actions.detach().clone()
         else:
             # define action noise.
             if callable(self.action_epsilon):
@@ -741,8 +742,11 @@ class PolicyGradient:
                 action_alpha = self.action_alpha(noise_index)
             else:
                 action_alpha = self.action_alpha
+
+            actions = self.train_policy(obs, last_actions)
+            noiseless_actions = actions.detach().clone()
             actions = apply_action_noise(
-                self.train_policy(obs, last_actions),
+                actions,
                 noise_model=self.action_noise,
                 epsilon=action_epsilon,
                 alpha=action_alpha,
@@ -783,21 +787,20 @@ class PolicyGradient:
                 )
 
             # calculate rewards
-            rewards = 100 * torch.log(
-                torch.sum(actions * price_variations * trf_mu, dim=1, keepdim=True)
-            )
+            rewards = torch.sum(noiseless_actions * price_variations * trf_mu, dim=1, keepdim=True) - 1
 
-            self.summary_writer.add_scalar(
-                "Mean Reward",
-                rewards.mean(),
-                noise_index,
-            )
+            if not test:
+                self.summary_writer.add_scalar(
+                    "Mean Reward",
+                    rewards.mean(),
+                    noise_index,
+                )
 
             # Q-value = 0 if it is a terminal state
             next_q_values[dones] = 0.0
 
             # calculate q-value
-            expected_q_values = rewards + 0.99 * next_q_values
+            expected_q_values = rewards + 0.0 * next_q_values
             q_loss = torch.nn.functional.smooth_l1_loss(q_values, expected_q_values)
 
             # update q_value network
@@ -848,7 +851,7 @@ class PolicyGradient:
             self.test_policy.zero_grad()
             policy_loss.backward()
             self.test_optimizer.step()
-        else:
+        elif noise_index % 2 == 0:
             self.train_policy.zero_grad()
             policy_loss.backward()
             self.train_optimizer.step()
