@@ -189,7 +189,7 @@ class PolicyGradient:
             self.train_q_net = self.q_net(**self.q_net_kwargs).to(self.device)
             self.target_train_q_net = copy.deepcopy(self.train_q_net)
             self.train_q_optimizer = self.optimizer(
-                self.train_q_net.parameters(), lr=5e-4
+                self.train_q_net.parameters(), lr=1e-5
             )
 
         # replay buffer and portfolio vector memory
@@ -723,7 +723,6 @@ class PolicyGradient:
         # define agent's actions
         if test:
             actions = self.test_policy(obs, last_actions)
-            noiseless_actions = actions.detach().clone()
         else:
             # define action noise.
             if callable(self.action_epsilon):
@@ -744,7 +743,6 @@ class PolicyGradient:
                 action_alpha = self.action_alpha
 
             actions = self.train_policy(obs, last_actions)
-            noiseless_actions = actions.detach().clone()
             actions = apply_action_noise(
                 actions,
                 noise_model=self.action_noise,
@@ -787,7 +785,7 @@ class PolicyGradient:
                 )
 
             # calculate rewards
-            rewards = torch.sum(noiseless_actions * price_variations * trf_mu, dim=1, keepdim=True) - 1
+            rewards = torch.log(torch.sum(actions * price_variations * trf_mu, dim=1, keepdim=True))
 
             if not test:
                 self.summary_writer.add_scalar(
