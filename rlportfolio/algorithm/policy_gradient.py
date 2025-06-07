@@ -839,6 +839,11 @@ class PolicyGradient:
                 policy_loss = -torch.mean(rate) / (
                     1 + self.objective_lambda * torch.std(rate)
                 )
+            elif self.objective_function == "heterogeneity":
+                rate = torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
+                max = torch.max(actions, dim=1).values
+                min = torch.min(actions, dim=1).values
+                policy_loss = - (torch.mean(rate) - self.objective_lambda * torch.mean(max - min))
             else:
                 policy_loss = -torch.mean(
                     torch.log(torch.sum(actions * price_variations * trf_mu, dim=1))
